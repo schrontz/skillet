@@ -82,8 +82,19 @@
   <!-- REFLECT VIEW -->
   <div id="view-reflect">
     <div class="card">
-      <label for="technique-select">Technik</label>
-      <select id="technique-select"></select>
+      <label for="reflect-recipe-select">Rezept (optional)</label>
+      <select id="reflect-recipe-select" onchange="onReflectRecipeChange()">
+        <option value="">Kein Rezept / freie Auswahl</option>
+      </select>
+
+      <div id="technique-select-wrapper" style="margin-top:14px;">
+        <label for="technique-select">Technik</label>
+        <select id="technique-select"></select>
+      </div>
+      <div id="technique-fixed-label" style="display:none; margin-top:14px;">
+        <label>Technik</label>
+        <div style="padding:10px 12px; background: var(--accent-light); border-radius:8px; font-weight:600;"></div>
+      </div>
 
       <label style="margin-top:14px;">Was hast du gemacht?</label>
       <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
@@ -137,6 +148,7 @@
   let techniques = [];
   let currentReflectionId = null;
   let currentTechniqueId = null;
+  let currentReflectRecipeId = null;
 
   // ---- Tabs ----
   function showTab(tab) {
@@ -148,6 +160,7 @@
     document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
     if (tab === 'progress') loadProgress();
     if (tab === 'recipes') loadRecipes();
+    if (tab === 'reflect') loadRecipesForReflect();
   }
 
   // ---- Rezept speichern ----
@@ -302,8 +315,69 @@
       headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
     });
     techniques = await res.json();
+    renderTechniqueOptions(techniques);
+  }
+
+  // ---- Techniken-Dropdown befüllen (volle oder gefilterte Liste) ----
+  function renderTechniqueOptions(list) {
     const select = document.getElementById('technique-select');
-    select.innerHTML = techniques.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    select.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  }
+
+  // ---- Rezepte für die Reflexions-Auswahl laden ----
+  async function loadRecipesForReflect() {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=id,titel&order=erstellt_am.desc`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    const recipes = await res.json();
+    const select = document.getElementById('reflect-recipe-select');
+    const previousValue = select.value;
+    select.innerHTML = `<option value="">Kein Rezept / freie Auswahl</option>` +
+      recipes.map(r => `<option value="${r.id}">${r.titel}</option>`).join('');
+    select.value = previousValue;
+  }
+
+  // ---- Bei Rezept-Auswahl: Techniken-Dropdown filtern (H4/H5-Logik) ----
+  async function onReflectRecipeChange() {
+    const recipeId = document.getElementById('reflect-recipe-select').value;
+    currentReflectRecipeId = recipeId || null;
+
+    const wrapper = document.getElementById('technique-select-wrapper');
+    const fixedLabel = document.getElementById('technique-fixed-label');
+
+    if (!recipeId) {
+      // Kein Rezept gewählt: volles Dropdown (H5-Fallback)
+      wrapper.style.display = 'block';
+      fixedLabel.style.display = 'none';
+      renderTechniqueOptions(techniques);
+      return;
+    }
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/recipe_techniques?select=technique_id,techniques(id,name)&recipe_id=eq.${recipeId}`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const rows = await res.json();
+    const matchedTechniques = rows.map(r => r.techniques).filter(Boolean);
+
+    if (matchedTechniques.length === 0) {
+      // Rezept hat keine zugeordneten Techniken: volles Dropdown (H5-Fallback)
+      wrapper.style.display = 'block';
+      fixedLabel.style.display = 'none';
+      renderTechniqueOptions(techniques);
+    } else if (matchedTechniques.length === 1) {
+      // Genau eine Technik: Dropdown weg, feste Anzeige (H4-Kernidee)
+      wrapper.style.display = 'none';
+      fixedLabel.style.display = 'block';
+      fixedLabel.querySelector('div').textContent = matchedTechniques[0].name;
+      document.getElementById('technique-select').innerHTML =
+        `<option value="${matchedTechniques[0].id}" selected>${matchedTechniques[0].name}</option>`;
+    } else {
+      // Mehrere Techniken: gefiltertes Dropdown
+      wrapper.style.display = 'block';
+      fixedLabel.style.display = 'none';
+      renderTechniqueOptions(matchedTechniques);
+    }
   }
 
   // ---- Reflexion absenden (neue oder Folgerunde) ----
@@ -322,6 +396,7 @@
       beschreibung_text: beschreibung
     };
     if (currentReflectionId) body.reflection_id = currentReflectionId;
+    if (!currentReflectionId && currentReflectRecipeId) body.recipe_id = currentReflectRecipeId;
 
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/reflect-technique`, {
