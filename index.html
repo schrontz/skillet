@@ -75,6 +75,7 @@
 
   <nav>
     <button id="tab-reflect" class="active" onclick="showTab('reflect')">Reflektieren</button>
+    <button id="tab-recipes" onclick="showTab('recipes')">Rezepte</button>
     <button id="tab-progress" onclick="showTab('progress')">Fortschritt</button>
   </nav>
 
@@ -92,6 +93,29 @@
     </div>
 
     <div id="result-card"></div>
+  </div>
+
+  <!-- RECIPES VIEW -->
+  <div id="view-recipes" style="display:none;">
+    <div class="card">
+      <label for="recipe-titel-input">Titel</label>
+      <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck"
+        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+
+      <label style="margin-top:14px;">Zutaten</label>
+      <textarea id="recipe-zutaten" placeholder="3 Eier, 50g Speckwürfel, Butter, Salz, Pfeffer..."></textarea>
+
+      <label style="margin-top:14px;">Anleitung</label>
+      <textarea id="recipe-anleitung" placeholder="Speck in der Pfanne knusprig braten, Eier verquirlen..."></textarea>
+
+      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()">Rezept speichern</button>
+      <div class="status-line" id="recipe-status-line"></div>
+    </div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:10px;">Deine Rezepte</div>
+      <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
+    </div>
   </div>
 
   <!-- PROGRESS VIEW -->
@@ -115,10 +139,79 @@
   // ---- Tabs ----
   function showTab(tab) {
     document.getElementById('view-reflect').style.display = tab === 'reflect' ? 'block' : 'none';
+    document.getElementById('view-recipes').style.display = tab === 'recipes' ? 'block' : 'none';
     document.getElementById('view-progress').style.display = tab === 'progress' ? 'block' : 'none';
     document.getElementById('tab-reflect').classList.toggle('active', tab === 'reflect');
+    document.getElementById('tab-recipes').classList.toggle('active', tab === 'recipes');
     document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
     if (tab === 'progress') loadProgress();
+    if (tab === 'recipes') loadRecipes();
+  }
+
+  // ---- Rezept speichern ----
+  async function submitRecipe() {
+    const titel = document.getElementById('recipe-titel-input').value.trim();
+    const zutaten = document.getElementById('recipe-zutaten').value.trim();
+    const anleitung = document.getElementById('recipe-anleitung').value.trim();
+    if (!titel) return;
+
+    const btn = document.getElementById('recipe-submit-btn');
+    const statusLine = document.getElementById('recipe-status-line');
+    btn.disabled = true;
+    statusLine.textContent = "Speichere...";
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify({ titel, zutaten, anleitung })
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        statusLine.textContent = "Fehler: " + err;
+        btn.disabled = false;
+        return;
+      }
+
+      document.getElementById('recipe-titel-input').value = "";
+      document.getElementById('recipe-zutaten').value = "";
+      document.getElementById('recipe-anleitung').value = "";
+      statusLine.textContent = "Gespeichert!";
+      loadRecipes();
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
+    btn.disabled = false;
+  }
+
+  // ---- Rezepte laden ----
+  async function loadRecipes() {
+    const listEl = document.getElementById('recipe-list');
+    listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,erstellt_am&order=erstellt_am.desc`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const data = await res.json();
+
+    if (!data.length) {
+      listEl.innerHTML = `<div class="muted">Noch keine Rezepte gespeichert.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = data.map(r => `
+      <div class="progress-item" style="align-items: flex-start; flex-direction: column;">
+        <div style="font-weight:600;">${r.titel}</div>
+        ${r.zutaten ? `<div class="muted" style="margin-top:4px;">${r.zutaten}</div>` : ''}
+      </div>
+    `).join('');
   }
 
   // ---- Techniken laden ----
