@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skillet – Koch-Skills</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --ink: #2b2420;
+    --muted: #786f64;
+    --accent: #b5522f;
+    --accent-light: #f1d9cd;
+    --ok: #4a7c59;
+    --warn: #c9973a;
+    --border: #e6ded3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    padding: 24px 16px 80px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.95rem; }
+  nav {
+    display: flex; gap: 8px; margin-bottom: 24px;
+    border-bottom: 1px solid var(--border); padding-bottom: 12px;
+  }
+  nav button {
+    background: none; border: none; padding: 8px 14px; border-radius: 8px;
+    font-size: 0.95rem; cursor: pointer; color: var(--muted);
+  }
+  nav button.active { background: var(--accent); color: white; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  select, textarea, button.primary {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 1rem; font-family: inherit;
+  }
+  textarea { min-height: 100px; resize: vertical; margin-top: 10px; }
+  button.primary {
+    background: var(--accent); color: white; border: none;
+    margin-top: 14px; cursor: pointer; font-weight: 600;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .kriterium { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--border); }
+  .kriterium:last-child { border-bottom: none; }
+  .badge { padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+  .badge.erfuellt { background: #dcece0; color: var(--ok); }
+  .badge.unklar { background: #f5ecd8; color: var(--warn); }
+  .badge.nicht_erfuellt { background: #f4dcd6; color: var(--accent); }
+  .fehler-liste { background: #fdf4ef; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 0.9rem; }
+  .rueckfrage-box { background: var(--accent-light); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .progress-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .progress-item:last-child { border-bottom: none; }
+  .level-dots { display: flex; gap: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+  .dot.filled { background: var(--accent); }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+  .status-line { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🍳 Skillet</h1>
+  <div class="subtitle">Koch-Skills reflektieren und wachsen sehen</div>
+
+  <nav>
+    <button id="tab-reflect" class="active" onclick="showTab('reflect')">Reflektieren</button>
+    <button id="tab-progress" onclick="showTab('progress')">Fortschritt</button>
+  </nav>
+
+  <!-- REFLECT VIEW -->
+  <div id="view-reflect">
+    <div class="card">
+      <label for="technique-select">Technik</label>
+      <select id="technique-select"></select>
+
+      <label style="margin-top:14px;">Was hast du gemacht?</label>
+      <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
+
+      <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
+      <div class="status-line" id="status-line"></div>
+    </div>
+
+    <div id="result-card"></div>
+  </div>
+
+  <!-- PROGRESS VIEW -->
+  <div id="view-progress" style="display:none;">
+    <div class="card" id="progress-list">
+      <div class="muted">Lade Fortschritt...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==== KONFIGURATION: hier deine Werte eintragen ====
+  const SUPABASE_URL = "https://isqbuagacqnmeephathu.supabase.co";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzcWJ1YWdhY3FubWVlcGhhdGh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0NjU4MTcsImV4cCI6MjEwMTA0MTgxN30.pcRqIk3DMfhCsOgrln56qAnyNJBlJIG0shmy69TlREA";
+  // =====================================================
+
+  let techniques = [];
+  let currentReflectionId = null;
+  let currentTechniqueId = null;
+
+  // ---- Tabs ----
+  function showTab(tab) {
+    document.getElementById('view-reflect').style.display = tab === 'reflect' ? 'block' : 'none';
+    document.getElementById('view-progress').style.display = tab === 'progress' ? 'block' : 'none';
+    document.getElementById('tab-reflect').classList.toggle('active', tab === 'reflect');
+    document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
+    if (tab === 'progress') loadProgress();
+  }
+
+  // ---- Techniken laden ----
+  async function loadTechniques() {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques?select=id,name&order=name.asc`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    techniques = await res.json();
+    const select = document.getElementById('technique-select');
+    select.innerHTML = techniques.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  }
+
+  // ---- Reflexion absenden (neue oder Folgerunde) ----
+  async function submitReflection() {
+    const beschreibung = document.getElementById('beschreibung').value.trim();
+    if (!beschreibung) return;
+
+    const btn = document.getElementById('submit-btn');
+    const statusLine = document.getElementById('status-line');
+    btn.disabled = true;
+    statusLine.textContent = "Wird ausgewertet...";
+
+    const body = {
+      technique_id: currentReflectionId ? currentTechniqueId : document.getElementById('technique-select').value,
+      modus: "voll",
+      beschreibung_text: beschreibung
+    };
+    if (currentReflectionId) body.reflection_id = currentReflectionId;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/reflect-technique`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        statusLine.textContent = "Fehler: " + data.error;
+        btn.disabled = false;
+        return;
+      }
+
+      currentReflectionId = data.reflection_id;
+      currentTechniqueId = body.technique_id;
+
+      if (!data.abgeschlossen) {
+        renderResult(data.ergebnis_dieser_runde, false);
+        document.getElementById('beschreibung').value = "";
+        statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+      } else {
+        renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+        statusLine.textContent = "Reflexion abgeschlossen.";
+        currentReflectionId = null; // fertig, nächste Eingabe startet neue Reflexion
+        document.getElementById('beschreibung').value = "";
+      }
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
+    btn.disabled = false;
+  }
+
+  // ---- Ergebnis darstellen ----
+  function renderResult(output, abgeschlossen, ergebnis, progress) {
+    const card = document.getElementById('result-card');
+    let html = `<div class="card">`;
+
+    if (output.kriterien_bewertung && output.kriterien_bewertung.length > 0) {
+      html += output.kriterien_bewertung.map(k => `
+        <div class="kriterium">
+          <span>${k.kriterium}</span>
+          <span class="badge ${k.status}">${k.status.replace('_', ' ')}</span>
+        </div>
+      `).join('');
+    }
+
+    if (output.fehler_erkannt && output.fehler_erkannt.length > 0) {
+      html += `<div class="fehler-liste"><strong>Beobachtung:</strong> ${output.fehler_erkannt.join(' ')}</div>`;
+    }
+
+    if (output.gesamteinschaetzung) {
+      html += `<p style="margin-top:14px;">${output.gesamteinschaetzung}</p>`;
+    }
+
+    if (!abgeschlossen && output.rueckfrage) {
+      html += `<div class="rueckfrage-box"><strong>Rückfrage:</strong> ${output.rueckfrage}</div>`;
+    }
+
+    if (abgeschlossen) {
+      const labels = {
+        sauber_bestaetigt: "✅ Sauber bestätigt",
+        unklar_geblieben: "❔ Unklar geblieben",
+        fehler_erkannt: "⚠️ Fehler erkannt",
+        technischer_fehler: "⚠️ Technischer Fehler"
+      };
+      html += `<p style="margin-top:14px; font-weight:600;">${labels[ergebnis] || ergebnis}</p>`;
+      if (progress) {
+        html += `<p class="muted">Level ${progress.level} · ${progress.sauber_bestaetigt_count}x sauber bestätigt · ${progress.angewendet_count}x angewendet</p>`;
+      }
+    }
+
+    html += `</div>`;
+    card.innerHTML = html;
+  }
+
+  // ---- Fortschritt laden ----
+  async function loadProgress() {
+    const listEl = document.getElementById('progress-list');
+    listEl.innerHTML = `<div class="muted">Lade Fortschritt...</div>`;
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/techniques?select=id,name,technique_progress(level,angewendet_count,sauber_bestaetigt_count)&order=name.asc`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const data = await res.json();
+
+    listEl.innerHTML = data.map(t => {
+      const p = (t.technique_progress && t.technique_progress[0]) || { level: 0, angewendet_count: 0, sauber_bestaetigt_count: 0 };
+      const dots = [0, 1, 2, 3].map(i => `<span class="dot ${i <= p.level ? 'filled' : ''}"></span>`).join('');
+      return `
+        <div class="progress-item">
+          <div>
+            <div>${t.name}</div>
+            <div class="muted">${p.sauber_bestaetigt_count}x sauber bestätigt · ${p.angewendet_count}x angewendet</div>
+          </div>
+          <div class="level-dots">${dots}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  loadTechniques();
+</script>
+</body>
+</html>
