@@ -112,6 +112,8 @@
       <div class="status-line" id="recipe-status-line"></div>
     </div>
 
+    <div id="detect-card"></div>
+
     <div class="card">
       <div class="muted" style="margin-bottom:10px;">Deine Rezepte</div>
       <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
@@ -167,7 +169,7 @@
           apikey: ANON_KEY,
           Authorization: `Bearer ${ANON_KEY}`,
           "Content-Type": "application/json",
-          Prefer: "return=minimal"
+          Prefer: "return=representation"
         },
         body: JSON.stringify({ titel, zutaten, anleitung })
       });
@@ -179,15 +181,95 @@
         return;
       }
 
+      const [savedRecipe] = await res.json();
       document.getElementById('recipe-titel-input').value = "";
       document.getElementById('recipe-zutaten').value = "";
       document.getElementById('recipe-anleitung').value = "";
-      statusLine.textContent = "Gespeichert!";
+      statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
       loadRecipes();
+
+      await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
+      statusLine.textContent = "Gespeichert!";
     } catch (e) {
       statusLine.textContent = "Verbindungsfehler: " + e.message;
     }
     btn.disabled = false;
+  }
+
+  // ---- Techniken erkennen lassen und zur Bestätigung anzeigen ----
+  async function detectAndConfirmTechniques(recipe, titel, zutaten, anleitung) {
+    const detectCard = document.getElementById('detect-card');
+    detectCard.innerHTML = `<div class="card muted">Techniken werden erkannt...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/detect-techniques`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ recipe_id: recipe.id, titel, zutaten, anleitung })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        detectCard.innerHTML = `<div class="card">Erkennung fehlgeschlagen: ${data.error}</div>`;
+        return;
+      }
+
+      const erkannt = new Set(data.erkannte_technik_ids || []);
+      // techniques ist bereits global geladen (aus loadTechniques)
+      detectCard.innerHTML = `
+        <div class="card">
+          <div style="margin-bottom:10px;">Erkannte Techniken für <strong>${titel}</strong> – bitte prüfen:</div>
+          ${techniques.map(t => `
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:0.92rem; cursor:pointer;">
+              <input type="checkbox" class="detect-checkbox" value="${t.id}" ${erkannt.has(t.id) ? 'checked' : ''}>
+              ${t.name}
+            </label>
+          `).join('')}
+          <button class="primary" onclick="confirmTechniques('${recipe.id}')">Bestätigen</button>
+        </div>
+      `;
+    } catch (e) {
+      detectCard.innerHTML = `<div class="card">Verbindungsfehler bei der Erkennung: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Bestätigte Techniken in recipe_techniques speichern ----
+  async function confirmTechniques(recipeId) {
+    const checked = Array.from(document.querySelectorAll('.detect-checkbox:checked')).map(cb => cb.value);
+    const rows = checked.map(technique_id => ({ recipe_id: recipeId, technique_id }));
+
+    const detectCard = document.getElementById('detect-card');
+
+    if (rows.length === 0) {
+      detectCard.innerHTML = `<div class="card muted">Keine Techniken zugeordnet.</div>`;
+      return;
+    }
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify(rows)
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        detectCard.innerHTML = `<div class="card">Fehler beim Speichern: ${err}</div>`;
+        return;
+      }
+
+      detectCard.innerHTML = `<div class="card muted">✅ ${rows.length} Technik(en) zugeordnet.</div>`;
+    } catch (e) {
+      detectCard.innerHTML = `<div class="card">Verbindungsfehler: ${e.message}</div>`;
+    }
   }
 
   // ---- Rezepte laden ----
