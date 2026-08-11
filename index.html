@@ -244,8 +244,109 @@
           <button class="primary" onclick="confirmTechniques('${recipe.id}')">Bestätigen</button>
         </div>
       `;
+
+      if (data.neue_technik_vorschlag) {
+        renderNeueTechnikVorschlag(data.neue_technik_vorschlag, recipe.id);
+      }
     } catch (e) {
       detectCard.innerHTML = `<div class="card">Verbindungsfehler bei der Erkennung: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Vorschlag für neue Technik anzeigen (Anlegen/Ignorieren) ----
+  function renderNeueTechnikVorschlag(vorschlag, recipeId) {
+    const box = document.createElement('div');
+    box.className = 'card';
+    box.id = 'neue-technik-card';
+    box.innerHTML = `
+      <div style="margin-bottom:8px;">💡 <strong>Neue Technik vorgeschlagen: ${vorschlag.name}</strong></div>
+      <div class="muted" style="margin-bottom:14px;">${vorschlag.begruendung}</div>
+      <div style="display:flex; gap:8px;">
+        <button class="primary" style="width:auto; flex:1;" onclick="generateTechniqueSteckbrief('${vorschlag.name.replace(/'/g, "\\'")}', '${recipeId}')">Steckbrief erstellen</button>
+        <button style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.getElementById('neue-technik-card').remove()">Ignorieren</button>
+      </div>
+    `;
+    document.getElementById('detect-card').appendChild(box);
+  }
+
+  // ---- Steckbrief-Entwurf generieren lassen (nutzt B3-Prompt via Edge Function) ----
+  async function generateTechniqueSteckbrief(name, recipeId) {
+    const box = document.getElementById('neue-technik-card');
+    box.innerHTML = `<div class="muted">Steckbrief wird erstellt...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-technique`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name })
+      });
+      const steckbrief = await res.json();
+
+      if (steckbrief.error) {
+        box.innerHTML = `<div>Fehler: ${steckbrief.error}</div>`;
+        return;
+      }
+
+      box.innerHTML = `
+        <div style="margin-bottom:8px;"><strong>${steckbrief.name}</strong></div>
+        <div class="muted" style="margin-bottom:10px;">${steckbrief.kurzbeschreibung}</div>
+        <div style="font-size:0.88rem; font-weight:600; margin-top:8px;">Kernkriterien</div>
+        ${steckbrief.kernkriterien.map(k => `<div class="kriterium"><span>${k}</span></div>`).join('')}
+        <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Typische Fehler</div>
+        <div class="fehler-liste">${steckbrief.typische_fehler.join(' ')}</div>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="primary" style="width:auto; flex:1;" id="save-technique-btn">Speichern</button>
+          <button style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.getElementById('neue-technik-card').remove()">Verwerfen</button>
+        </div>
+      `;
+      document.getElementById('save-technique-btn').onclick = () => saveNewTechnique(steckbrief, recipeId);
+    } catch (e) {
+      box.innerHTML = `<div>Verbindungsfehler: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Neue Technik final speichern + dem Rezept zuordnen ----
+  async function saveNewTechnique(steckbrief, recipeId) {
+    const box = document.getElementById('neue-technik-card');
+    box.innerHTML = `<div class="muted">Speichere...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify({
+          name: steckbrief.name,
+          kurzbeschreibung: steckbrief.kurzbeschreibung,
+          kernkriterien: steckbrief.kernkriterien,
+          typische_fehler: steckbrief.typische_fehler,
+          voraussetzungen: steckbrief.voraussetzungen || []
+        })
+      });
+      const [newTechnique] = await res.json();
+
+      await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify({ recipe_id: recipeId, technique_id: newTechnique.id })
+      });
+
+      await loadTechniques(); // globale Liste aktualisieren, damit sie überall auftaucht
+      box.innerHTML = `<div class="muted">✅ "${newTechnique.name}" wurde angelegt und zugeordnet.</div>`;
+    } catch (e) {
+      box.innerHTML = `<div>Fehler beim Speichern: ${e.message}</div>`;
     }
   }
 
