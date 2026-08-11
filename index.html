@@ -109,6 +109,16 @@
   <!-- RECIPES VIEW -->
   <div id="view-recipes" style="display:none;">
     <div class="card">
+      <label for="import-url-input">Von URL importieren</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="import-url-input" placeholder="https://..."
+          style="flex:1; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+        <button class="primary" style="width:auto; padding:10px 18px; margin-top:0;" onclick="importRecipeFromUrl()">Importieren</button>
+      </div>
+      <div class="status-line" id="import-status-line"></div>
+    </div>
+
+    <div class="card">
       <label for="recipe-titel-input">Titel</label>
       <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck"
         style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
@@ -161,6 +171,42 @@
     if (tab === 'progress') loadProgress();
     if (tab === 'recipes') loadRecipes();
     if (tab === 'reflect') loadRecipesForReflect();
+  }
+
+  // ---- Rezept von URL importieren, bestehendes Formular befüllen ----
+  async function importRecipeFromUrl() {
+    const url = document.getElementById('import-url-input').value.trim();
+    if (!url) return;
+
+    const statusLine = document.getElementById('import-status-line');
+    statusLine.textContent = "Importiere...";
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/import-recipe`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        statusLine.textContent = "Fehler: " + data.error;
+        return;
+      }
+
+      document.getElementById('recipe-titel-input').value = data.titel || "";
+      document.getElementById('recipe-zutaten').value = data.zutaten || "";
+      document.getElementById('recipe-anleitung').value = data.anleitung || "";
+
+      const quelle = data.source === "structured" ? "strukturierte Daten" : "KI-Extraktion";
+      statusLine.textContent = `Importiert (${quelle}). Bitte prüfen und ggf. anpassen, dann unten speichern.`;
+      document.getElementById('import-url-input').value = "";
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
   }
 
   // ---- Rezept speichern ----
