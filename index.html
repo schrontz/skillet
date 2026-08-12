@@ -119,6 +119,10 @@
     </div>
 
     <div class="card">
+      <div id="edit-mode-banner" style="display:none; background: var(--accent-light); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.9rem;">
+        Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.
+        <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent); margin-left:8px;">Abbrechen</a>
+      </div>
       <label for="recipe-titel-input">Titel</label>
       <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck"
         style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
@@ -174,6 +178,8 @@
   }
 
   // ---- Rezept von URL importieren, bestehendes Formular befüllen ----
+  let pendingImportUrl = null;
+
   async function importRecipeFromUrl() {
     const url = document.getElementById('import-url-input').value.trim();
     if (!url) return;
@@ -200,6 +206,7 @@
       document.getElementById('recipe-titel-input').value = data.titel || "";
       document.getElementById('recipe-zutaten').value = data.zutaten || "";
       document.getElementById('recipe-anleitung').value = data.anleitung || "";
+      pendingImportUrl = url;
 
       const quelle = data.source === "structured" ? "strukturierte Daten" : "KI-Extraktion";
       statusLine.textContent = `Importiert (${quelle}). Bitte prüfen und ggf. anpassen, dann unten speichern.`;
@@ -230,7 +237,13 @@
           "Content-Type": "application/json",
           Prefer: "return=representation"
         },
-        body: JSON.stringify({ titel, zutaten, anleitung })
+        body: JSON.stringify({
+          titel,
+          zutaten,
+          anleitung,
+          kopie_von: editingCopyOf ? editingCopyOf.id : null,
+          quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null)
+        })
       });
 
       if (!res.ok) {
@@ -244,6 +257,9 @@
       document.getElementById('recipe-titel-input').value = "";
       document.getElementById('recipe-zutaten').value = "";
       document.getElementById('recipe-anleitung').value = "";
+      document.getElementById('edit-mode-banner').style.display = 'none';
+      editingCopyOf = null;
+      pendingImportUrl = null;
       statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
       loadRecipes();
 
@@ -338,6 +354,9 @@
 
       box.innerHTML = `
         <div style="margin-bottom:8px;"><strong>${steckbrief.name}</strong></div>
+        ${steckbrief.root_kategorie
+          ? `<div class="muted" style="margin-bottom:8px;">Kategorie: ${steckbrief.root_kategorie}</div>`
+          : `<div class="fehler-liste" style="margin-bottom:8px;">Keine Root-Kategorie passt: ${steckbrief.root_kategorie_hinweis || 'kein Hinweis angegeben'}</div>`}
         <div class="muted" style="margin-bottom:10px;">${steckbrief.kurzbeschreibung}</div>
         <div style="font-size:0.88rem; font-weight:600; margin-top:8px;">Kernkriterien</div>
         ${steckbrief.kernkriterien.map(k => `<div class="kriterium"><span>${k}</span></div>`).join('')}
@@ -373,7 +392,8 @@
           kurzbeschreibung: steckbrief.kurzbeschreibung,
           kernkriterien: steckbrief.kernkriterien,
           typische_fehler: steckbrief.typische_fehler,
-          voraussetzungen: steckbrief.voraussetzungen || []
+          voraussetzungen: steckbrief.voraussetzungen || [],
+          root_kategorie: steckbrief.root_kategorie || null
         })
       });
       const [newTechnique] = await res.json();
@@ -433,27 +453,109 @@
   }
 
   // ---- Rezepte laden ----
+  let allRecipesCache = [];
+
   async function loadRecipes() {
     const listEl = document.getElementById('recipe-list');
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,erstellt_am&order=erstellt_am.desc`,
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,quelle_url,kopie_von,erstellt_am&order=erstellt_am.desc`,
       { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
     );
     const data = await res.json();
+    allRecipesCache = data;
 
     if (!data.length) {
       listEl.innerHTML = `<div class="muted">Noch keine Rezepte gespeichert.</div>`;
       return;
     }
 
+    const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
+
     listEl.innerHTML = data.map(r => `
-      <div class="progress-item" style="align-items: flex-start; flex-direction: column;">
+      <div class="progress-item" style="align-items: flex-start; flex-direction: column; cursor:pointer;" onclick="toggleRecipeDetail('${r.id}')">
         <div style="font-weight:600;">${r.titel}</div>
+        ${r.kopie_von && titelById[r.kopie_von] ? `<div class="muted" style="font-size:0.8rem;">Kopie von "${titelById[r.kopie_von]}"</div>` : ''}
         ${r.zutaten ? `<div class="muted" style="margin-top:4px;">${r.zutaten}</div>` : ''}
+        <div id="recipe-detail-${r.id}" style="display:none; width:100%; margin-top:10px;" onclick="event.stopPropagation()"></div>
       </div>
     `).join('');
+  }
+
+  // ---- Detail aufklappen/zuklappen ----
+  function toggleRecipeDetail(id) {
+    const detailEl = document.getElementById(`recipe-detail-${id}`);
+    const isOpen = detailEl.style.display === 'block';
+    // alle anderen offenen Details schließen, damit die Liste übersichtlich bleibt
+    document.querySelectorAll('[id^="recipe-detail-"]').forEach(el => el.style.display = 'none');
+
+    if (isOpen) return; // war offen -> jetzt zu, fertig
+
+    const r = allRecipesCache.find(rec => rec.id === id);
+    detailEl.innerHTML = `
+      <div style="border-top:1px solid var(--border); padding-top:10px;">
+        <div style="font-size:0.88rem; font-weight:600;">Anleitung</div>
+        <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>
+        <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
+        <div id="recipe-techniques-${id}" class="muted">Lade...</div>
+        ${r.quelle_url ? `<div style="margin-top:8px;"><a href="${r.quelle_url}" target="_blank" style="color: var(--accent); font-size:0.85rem;">Quelle öffnen</a></div>` : ''}
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="startEditAsCopy('${id}')">Bearbeiten (als Kopie)</button>
+          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer;" onclick="deleteRecipe('${id}')">Löschen</button>
+        </div>
+      </div>
+    `;
+    detailEl.style.display = 'block';
+    loadRecipeTechniquesForDetail(id);
+  }
+
+  // ---- Verknüpfte Techniken für die Detailansicht laden ----
+  async function loadRecipeTechniquesForDetail(recipeId) {
+    const el = document.getElementById(`recipe-techniques-${recipeId}`);
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/recipe_techniques?select=techniques(name)&recipe_id=eq.${recipeId}`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const rows = await res.json();
+    const names = rows.map(r => r.techniques?.name).filter(Boolean);
+    el.textContent = names.length ? names.join(', ') : '(keine zugeordnet)';
+  }
+
+  // ---- Bearbeiten als Kopie: Formular befüllen ----
+  let editingCopyOf = null;
+
+  function startEditAsCopy(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
+
+    document.getElementById('recipe-titel-input').value = r.titel;
+    document.getElementById('recipe-zutaten').value = r.zutaten || '';
+    document.getElementById('recipe-anleitung').value = r.anleitung || '';
+
+    document.getElementById('edit-mode-original-title').textContent = r.titel;
+    document.getElementById('edit-mode-banner').style.display = 'block';
+
+    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cancelEditCopy() {
+    editingCopyOf = null;
+    document.getElementById('edit-mode-banner').style.display = 'none';
+    document.getElementById('recipe-titel-input').value = '';
+    document.getElementById('recipe-zutaten').value = '';
+    document.getElementById('recipe-anleitung').value = '';
+  }
+
+  // ---- Rezept löschen ----
+  async function deleteRecipe(id) {
+    if (!confirm('Dieses Rezept wirklich löschen? Zugehörige Techniken/dein Fortschritt bleiben erhalten.')) return;
+
+    await fetch(`${SUPABASE_URL}/rest/v1/recipes?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    loadRecipes();
   }
 
   // ---- Techniken laden ----
