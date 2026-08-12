@@ -229,28 +229,27 @@
     statusLine.textContent = "Speichere...";
 
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
-        method: "POST",
-        headers: {
-          apikey: ANON_KEY,
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation"
-        },
-        body: JSON.stringify({
-          titel,
-          zutaten,
-          anleitung,
-          kopie_von: editingCopyOf ? editingCopyOf.id : null,
-          quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null)
-        })
-      });
+      let kopieVonId = editingCopyOf ? editingCopyOf.id : null;
+      let hinweisOriginalWeg = false;
+
+      let res = await insertRecipe(titel, zutaten, anleitung, kopieVonId);
 
       if (!res.ok) {
-        const err = await res.text();
-        statusLine.textContent = "Fehler: " + err;
-        btn.disabled = false;
-        return;
+        const errText = await res.text();
+        const isFkFehler = errText.includes('recipes_kopie_von_fkey') || errText.includes('23503');
+
+        if (isFkFehler && kopieVonId) {
+          // Original wurde inzwischen gelöscht - ohne Verweis nochmal versuchen
+          hinweisOriginalWeg = true;
+          res = await insertRecipe(titel, zutaten, anleitung, null);
+        }
+
+        if (!res.ok) {
+          const err = await res.text();
+          statusLine.textContent = "Fehler: " + err;
+          btn.disabled = false;
+          return;
+        }
       }
 
       const [savedRecipe] = await res.json();
@@ -260,15 +259,37 @@
       document.getElementById('edit-mode-banner').style.display = 'none';
       editingCopyOf = null;
       pendingImportUrl = null;
-      statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
+      statusLine.textContent = hinweisOriginalWeg
+        ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
+        : "Gespeichert! Erkenne verwendete Techniken...";
       loadRecipes();
 
       await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
-      statusLine.textContent = "Gespeichert!";
+      statusLine.textContent = hinweisOriginalWeg ? "Gespeichert (ohne Kopie-Verweis, Original war weg)." : "Gespeichert!";
     } catch (e) {
       statusLine.textContent = "Verbindungsfehler: " + e.message;
     }
     btn.disabled = false;
+  }
+
+  // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
+  function insertRecipe(titel, zutaten, anleitung, kopieVonId) {
+    return fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
+      method: "POST",
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        titel,
+        zutaten,
+        anleitung,
+        kopie_von: kopieVonId,
+        quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null)
+      })
+    });
   }
 
   // ---- Techniken erkennen lassen und zur Bestätigung anzeigen ----
