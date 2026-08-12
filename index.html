@@ -130,6 +130,10 @@
       <label style="margin-top:14px;">Zutaten</label>
       <textarea id="recipe-zutaten" placeholder="3 Eier, 50g Speckwürfel, Butter, Salz, Pfeffer..."></textarea>
 
+      <label style="margin-top:14px;">Portionen (optional, für Mengenumrechnung)</label>
+      <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4"
+        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+
       <label style="margin-top:14px;">Anleitung</label>
       <textarea id="recipe-anleitung" placeholder="Speck in der Pfanne knusprig braten, Eier verquirlen..."></textarea>
 
@@ -179,6 +183,8 @@
 
   // ---- Rezept von URL importieren, bestehendes Formular befüllen ----
   let pendingImportUrl = null;
+  let pendingZutatenStrukturiert = null;
+  let pendingBasisPortionen = null;
 
   async function importRecipeFromUrl() {
     const url = document.getElementById('import-url-input').value.trim();
@@ -206,7 +212,10 @@
       document.getElementById('recipe-titel-input').value = data.titel || "";
       document.getElementById('recipe-zutaten').value = data.zutaten || "";
       document.getElementById('recipe-anleitung').value = data.anleitung || "";
+      document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
       pendingImportUrl = url;
+      pendingZutatenStrukturiert = data.zutatenStrukturiert || null;
+      pendingBasisPortionen = data.basisPortionen || null;
 
       const quelle = data.source === "structured" ? "strukturierte Daten" : "KI-Extraktion";
       statusLine.textContent = `Importiert (${quelle}). Bitte prüfen und ggf. anpassen, dann unten speichern.`;
@@ -256,9 +265,12 @@
       document.getElementById('recipe-titel-input').value = "";
       document.getElementById('recipe-zutaten').value = "";
       document.getElementById('recipe-anleitung').value = "";
+      document.getElementById('recipe-portionen-input').value = "";
       document.getElementById('edit-mode-banner').style.display = 'none';
       editingCopyOf = null;
       pendingImportUrl = null;
+      pendingZutatenStrukturiert = null;
+      pendingBasisPortionen = null;
       statusLine.textContent = hinweisOriginalWeg
         ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
         : "Gespeichert! Erkenne verwendete Techniken...";
@@ -274,6 +286,7 @@
 
   // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
   function insertRecipe(titel, zutaten, anleitung, kopieVonId) {
+    const manuellePortionen = document.getElementById('recipe-portionen-input').value;
     return fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
       method: "POST",
       headers: {
@@ -287,7 +300,9 @@
         zutaten,
         anleitung,
         kopie_von: kopieVonId,
-        quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null)
+        quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null),
+        basis_portionen: pendingBasisPortionen || (manuellePortionen ? parseInt(manuellePortionen, 10) : null),
+        zutaten_strukturiert: pendingZutatenStrukturiert || null
       })
     });
   }
@@ -481,7 +496,7 @@
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,quelle_url,kopie_von,erstellt_am&order=erstellt_am.desc`,
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am&order=erstellt_am.desc`,
       { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
     );
     const data = await res.json();
@@ -514,9 +529,21 @@
     if (isOpen) return; // war offen -> jetzt zu, fertig
 
     const r = allRecipesCache.find(rec => rec.id === id);
+    const hatStrukturierteZutaten = r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0 && r.basis_portionen;
+
     detailEl.innerHTML = `
       <div style="border-top:1px solid var(--border); padding-top:10px;">
-        <div style="font-size:0.88rem; font-weight:600;">Anleitung</div>
+        <div style="font-size:0.88rem; font-weight:600;">Zutaten</div>
+        ${hatStrukturierteZutaten
+          ? `<div style="display:flex; align-items:center; gap:10px; margin:6px 0;">
+               <span class="muted" style="font-size:0.85rem;">Portionen:</span>
+               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', -1)">-</button>
+               <span id="portionen-anzeige-${id}" style="font-weight:600;">${r.basis_portionen}</span>
+               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', 1)">+</button>
+             </div>
+             <div id="zutaten-liste-${id}"></div>`
+          : `<div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
+        <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Anleitung</div>
         <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>
         <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
         <div id="recipe-techniques-${id}" class="muted">Lade...</div>
@@ -528,7 +555,37 @@
       </div>
     `;
     detailEl.style.display = 'block';
+    if (hatStrukturierteZutaten) {
+      aktuellePortionen[id] = r.basis_portionen;
+      renderZutatenListe(id);
+    }
     loadRecipeTechniquesForDetail(id);
+  }
+
+  // ---- Portionen ändern und Zutatenliste neu berechnen ----
+  let aktuellePortionen = {};
+
+  function changePortionen(id, delta) {
+    const neu = Math.max(1, (aktuellePortionen[id] || 1) + delta);
+    aktuellePortionen[id] = neu;
+    document.getElementById(`portionen-anzeige-${id}`).textContent = neu;
+    renderZutatenListe(id);
+  }
+
+  function renderZutatenListe(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    const faktor = aktuellePortionen[id] / r.basis_portionen;
+    const listEl = document.getElementById(`zutaten-liste-${id}`);
+
+    listEl.innerHTML = r.zutaten_strukturiert.map(z => {
+      if (z.menge === null || z.menge === undefined) {
+        return `<div class="kriterium"><span>${z.name}</span></div>`;
+      }
+      const neueMenge = z.menge * faktor;
+      // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
+      const anzeige = neueMenge < 10 ? Math.round(neueMenge * 10) / 10 : Math.round(neueMenge);
+      return `<div class="kriterium"><span>${z.name}</span><span>${anzeige} ${z.einheit || ''}</span></div>`;
+    }).join('');
   }
 
   // ---- Verknüpfte Techniken für die Detailansicht laden ----
