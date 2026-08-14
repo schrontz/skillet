@@ -89,11 +89,19 @@
 
       <div id="technique-select-wrapper" style="margin-top:14px;">
         <label for="technique-select">Technik</label>
-        <select id="technique-select"></select>
+        <select id="technique-select" onchange="onTechniqueSelectChange()">
+          <option value="">Automatisch erkennen lassen</option>
+        </select>
       </div>
       <div id="technique-fixed-label" style="display:none; margin-top:14px;">
         <label>Technik</label>
         <div style="padding:10px 12px; background: var(--accent-light); border-radius:8px; font-weight:600;"></div>
+      </div>
+
+      <div id="auto-titel-wrapper" style="margin-top:14px;">
+        <label for="auto-titel-input">Titel (optional, nur falls kein Rezept gewählt)</label>
+        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht"
+          style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
       </div>
 
       <label style="margin-top:14px;">Was hast du gemacht?</label>
@@ -102,6 +110,9 @@
       <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
       <div class="status-line" id="status-line"></div>
     </div>
+
+    <div id="auto-detect-info" class="muted" style="padding:0 4px;"></div>
+    <div id="reflect-vorschlag-card"></div>
 
     <div id="result-card"></div>
   </div>
@@ -352,7 +363,7 @@
   }
 
   // ---- Vorschlag für neue Technik anzeigen (Anlegen/Ignorieren) ----
-  function renderNeueTechnikVorschlag(vorschlag, recipeId) {
+  function renderNeueTechnikVorschlag(vorschlag, recipeId, containerId = 'detect-card') {
     const box = document.createElement('div');
     box.className = 'card';
     box.id = 'neue-technik-card';
@@ -364,7 +375,7 @@
         <button style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.getElementById('neue-technik-card').remove()">Ignorieren</button>
       </div>
     `;
-    document.getElementById('detect-card').appendChild(box);
+    document.getElementById(containerId).appendChild(box);
   }
 
   // ---- Steckbrief-Entwurf generieren lassen (nutzt B3-Prompt via Edge Function) ----
@@ -648,7 +659,13 @@
   // ---- Techniken-Dropdown befüllen (volle oder gefilterte Liste) ----
   function renderTechniqueOptions(list) {
     const select = document.getElementById('technique-select');
-    select.innerHTML = list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+    select.innerHTML = `<option value="">Automatisch erkennen lassen</option>` +
+      list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  }
+
+  // ---- Titel-Feld nur relevant, wenn kein Rezept gewählt ist ----
+  function onTechniqueSelectChange() {
+    // aktuell nur Platzhalter für spätere Erweiterungen, Sichtbarkeit steuert onReflectRecipeChange
   }
 
   // ---- Rezepte für die Reflexions-Auswahl laden ----
@@ -664,101 +681,189 @@
     select.value = previousValue;
   }
 
-  // ---- Bei Rezept-Auswahl: Techniken-Dropdown filtern (H4/H5-Logik) ----
-  async function onReflectRecipeChange() {
+  // ---- Bei Rezept-Auswahl: nur noch Titel-Feld ein-/ausblenden (Filterung entfällt, wird zum Kontext-Hinweis für K2) ----
+  function onReflectRecipeChange() {
     const recipeId = document.getElementById('reflect-recipe-select').value;
     currentReflectRecipeId = recipeId || null;
 
-    const wrapper = document.getElementById('technique-select-wrapper');
-    const fixedLabel = document.getElementById('technique-fixed-label');
-
-    if (!recipeId) {
-      // Kein Rezept gewählt: volles Dropdown (H5-Fallback)
-      wrapper.style.display = 'block';
-      fixedLabel.style.display = 'none';
-      renderTechniqueOptions(techniques);
-      return;
-    }
-
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipe_techniques?select=technique_id,techniques(id,name)&recipe_id=eq.${recipeId}`,
-      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-    );
-    const rows = await res.json();
-    const matchedTechniques = rows.map(r => r.techniques).filter(Boolean);
-
-    if (matchedTechniques.length === 0) {
-      // Rezept hat keine zugeordneten Techniken: volles Dropdown (H5-Fallback)
-      wrapper.style.display = 'block';
-      fixedLabel.style.display = 'none';
-      renderTechniqueOptions(techniques);
-    } else if (matchedTechniques.length === 1) {
-      // Genau eine Technik: Dropdown weg, feste Anzeige (H4-Kernidee)
-      wrapper.style.display = 'none';
-      fixedLabel.style.display = 'block';
-      fixedLabel.querySelector('div').textContent = matchedTechniques[0].name;
-      document.getElementById('technique-select').innerHTML =
-        `<option value="${matchedTechniques[0].id}" selected>${matchedTechniques[0].name}</option>`;
-    } else {
-      // Mehrere Techniken: gefiltertes Dropdown
-      wrapper.style.display = 'block';
-      fixedLabel.style.display = 'none';
-      renderTechniqueOptions(matchedTechniques);
-    }
+    // Titel-Feld nur relevant, wenn kein Rezept gewählt ist (K4: Auto-Anlage eines Rezepts)
+    document.getElementById('auto-titel-wrapper').style.display = recipeId ? 'none' : 'block';
   }
 
-  // ---- Reflexion absenden (neue oder Folgerunde) ----
+  // ---- Auto-Erkennungs-Zustand (K2-K4) ----
+  let autoQueue = [];
+  let autoQueueIndex = 0;
+  let autoRecipeId = null;
+  let autoBeschreibung = "";
+  let autoVorschlag = null;
+
+  // ---- Hilfsfunktion: ein reflect-technique-Aufruf ----
+  async function callReflectTechnique(technique_id, beschreibung_text, reflection_id, recipe_id) {
+    const body = { technique_id, modus: "voll", beschreibung_text };
+    if (reflection_id) body.reflection_id = reflection_id;
+    if (!reflection_id && recipe_id) body.recipe_id = recipe_id;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/reflect-technique`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  }
+
+  // ---- Reflexion absenden (Rückfrage-Runde, explizite Technik, oder Auto-Erkennung starten) ----
   async function submitReflection() {
-    const beschreibung = document.getElementById('beschreibung').value.trim();
-    if (!beschreibung) return;
+    const beschreibungInput = document.getElementById('beschreibung').value.trim();
+    if (!beschreibungInput) return;
 
     const btn = document.getElementById('submit-btn');
     const statusLine = document.getElementById('status-line');
     btn.disabled = true;
-    statusLine.textContent = "Wird ausgewertet...";
-
-    const body = {
-      technique_id: currentReflectionId ? currentTechniqueId : document.getElementById('technique-select').value,
-      modus: "voll",
-      beschreibung_text: beschreibung
-    };
-    if (currentReflectionId) body.reflection_id = currentReflectionId;
-    if (!currentReflectionId && currentReflectRecipeId) body.recipe_id = currentReflectRecipeId;
 
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/reflect-technique`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
+      // Fall 1: laufende Rückfrage-Runde (egal ob manuell oder Teil der Auto-Queue)
+      if (currentReflectionId) {
+        statusLine.textContent = "Wird ausgewertet...";
+        const data = await callReflectTechnique(currentTechniqueId, beschreibungInput, currentReflectionId, null);
+        if (data.error) { statusLine.textContent = "Fehler: " + data.error; btn.disabled = false; return; }
+        document.getElementById('beschreibung').value = "";
 
-      if (data.error) {
-        statusLine.textContent = "Fehler: " + data.error;
+        if (!data.abgeschlossen) {
+          currentReflectionId = data.reflection_id;
+          renderResult(data.ergebnis_dieser_runde, false);
+          statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+        } else {
+          renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+          currentReflectionId = null;
+          if (autoQueue.length > 0) { await advanceAutoQueue(statusLine); }
+          else { statusLine.textContent = "Reflexion abgeschlossen."; }
+        }
         btn.disabled = false;
         return;
       }
 
-      currentReflectionId = data.reflection_id;
-      currentTechniqueId = body.technique_id;
+      // Fall 2: explizite Technik gewählt -> Auto-Modus umgehen, normaler Einzel-Ablauf
+      const gewaehlteTechnik = document.getElementById('technique-select').value;
+      if (gewaehlteTechnik) {
+        statusLine.textContent = "Wird ausgewertet...";
+        const data = await callReflectTechnique(gewaehlteTechnik, beschreibungInput, null, currentReflectRecipeId);
+        if (data.error) { statusLine.textContent = "Fehler: " + data.error; btn.disabled = false; return; }
+        currentTechniqueId = gewaehlteTechnik;
+        document.getElementById('beschreibung').value = "";
 
-      if (!data.abgeschlossen) {
-        renderResult(data.ergebnis_dieser_runde, false);
-        document.getElementById('beschreibung').value = "";
-        statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
-      } else {
-        renderResult(data.finaler_output, true, data.ergebnis, data.progress);
-        statusLine.textContent = "Reflexion abgeschlossen.";
-        currentReflectionId = null; // fertig, nächste Eingabe startet neue Reflexion
-        document.getElementById('beschreibung').value = "";
+        if (!data.abgeschlossen) {
+          currentReflectionId = data.reflection_id;
+          renderResult(data.ergebnis_dieser_runde, false);
+          statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+        } else {
+          renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+          statusLine.textContent = "Reflexion abgeschlossen.";
+        }
+        btn.disabled = false;
+        return;
       }
+
+      // Fall 3: Auto-Erkennung starten (K2)
+      statusLine.textContent = "Erkenne Techniken...";
+      document.getElementById('auto-detect-info').textContent = "";
+      document.getElementById('reflect-vorschlag-card').innerHTML = "";
+
+      const detectRes = await fetch(`${SUPABASE_URL}/functions/v1/detect-techniques-reflection`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ beschreibung_text: beschreibungInput, recipe_id: currentReflectRecipeId || undefined })
+      });
+      const detectData = await detectRes.json();
+
+      if (detectData.error) { statusLine.textContent = "Fehler: " + detectData.error; btn.disabled = false; return; }
+      if (!detectData.erkannte_technik_ids || detectData.erkannte_technik_ids.length === 0) {
+        statusLine.textContent = "Keine bekannte Technik erkannt. Du kannst oben auch manuell eine Technik wählen.";
+        btn.disabled = false;
+        return;
+      }
+
+      autoQueue = detectData.erkannte_technik_ids;
+      autoQueueIndex = 0;
+      autoBeschreibung = beschreibungInput;
+      autoVorschlag = detectData.neue_technik_vorschlag || null;
+
+      // Rezept bestimmen: gewähltes nehmen, oder neu anlegen (K4)
+      if (currentReflectRecipeId) {
+        autoRecipeId = currentReflectRecipeId;
+      } else {
+        const titelInput = document.getElementById('auto-titel-input').value.trim();
+        const titel = titelInput || `Spontan gekocht - ${new Date().toLocaleDateString('de-DE')}`;
+        const recipeRes = await fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
+          method: "POST",
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+          body: JSON.stringify({ titel, anleitung: beschreibungInput, zutaten: null })
+        });
+        const [neuesRezept] = await recipeRes.json();
+        autoRecipeId = neuesRezept.id;
+        currentReflectRecipeId = autoRecipeId;
+        loadRecipesForReflect();
+      }
+
+      // Erkannte Techniken mit dem Rezept verknüpfen (nur die, die noch fehlen)
+      const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques?select=technique_id&recipe_id=eq.${autoRecipeId}`, {
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+      });
+      const existingIds = new Set((await existingRes.json()).map(r => r.technique_id));
+      const neueVerknuepfungen = autoQueue.filter(id => !existingIds.has(id)).map(id => ({ recipe_id: autoRecipeId, technique_id: id }));
+      if (neueVerknuepfungen.length > 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+          method: "POST",
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify(neueVerknuepfungen)
+        });
+      }
+
+      document.getElementById('beschreibung').value = "";
+      await startQueueItem(statusLine);
     } catch (e) {
       statusLine.textContent = "Verbindungsfehler: " + e.message;
     }
     btn.disabled = false;
+  }
+
+  // ---- Aktuelles Element der Auto-Queue starten ----
+  async function startQueueItem(statusLine) {
+    const techId = autoQueue[autoQueueIndex];
+    const techName = techniques.find(t => t.id === techId)?.name || techId;
+    document.getElementById('auto-detect-info').textContent = `Technik ${autoQueueIndex + 1} von ${autoQueue.length}: ${techName}`;
+    statusLine.textContent = "Wird ausgewertet...";
+
+    currentTechniqueId = techId;
+    const data = await callReflectTechnique(techId, autoBeschreibung, null, autoRecipeId);
+    if (data.error) { statusLine.textContent = "Fehler: " + data.error; return; }
+
+    if (!data.abgeschlossen) {
+      currentReflectionId = data.reflection_id;
+      renderResult(data.ergebnis_dieser_runde, false);
+      statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+    } else {
+      currentReflectionId = null;
+      renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+      await advanceAutoQueue(statusLine);
+    }
+  }
+
+  // ---- Nach Abschluss einer Technik: nächste starten, oder fertig ----
+  async function advanceAutoQueue(statusLine) {
+    autoQueueIndex++;
+    if (autoQueueIndex < autoQueue.length) {
+      await startQueueItem(statusLine);
+    } else {
+      document.getElementById('auto-detect-info').textContent = `Alle ${autoQueue.length} erkannten Techniken reflektiert.`;
+      statusLine.textContent = "Fertig!";
+      if (autoVorschlag) {
+        renderNeueTechnikVorschlag(autoVorschlag, autoRecipeId, 'reflect-vorschlag-card');
+      }
+      loadRecipes();
+      autoQueue = [];
+      autoQueueIndex = 0;
+      autoRecipeId = null;
+      autoVorschlag = null;
+    }
   }
 
   // ---- Ergebnis darstellen ----
