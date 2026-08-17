@@ -133,6 +133,7 @@
     <div class="card">
       <div id="edit-mode-banner" style="display:none; background: var(--accent-light); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.9rem;">
         Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.
+        <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
         <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent); margin-left:8px;">Abbrechen</a>
       </div>
       <label for="recipe-titel-input">Titel</label>
@@ -552,6 +553,7 @@
 
     const r = allRecipesCache.find(rec => rec.id === id);
     const hatStrukturierteZutaten = r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0 && r.basis_portionen;
+    const nurPortionenOhneStruktur = r.basis_portionen && !hatStrukturierteZutaten;
 
     detailEl.innerHTML = `
       <div style="border-top:1px solid var(--border); padding-top:10px;">
@@ -564,7 +566,8 @@
                <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', 1)">+</button>
              </div>
              <div id="zutaten-liste-${id}"></div>`
-          : `<div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
+          : `${nurPortionenOhneStruktur ? `<div class="muted" style="font-size:0.85rem; margin-bottom:4px;">Für ${r.basis_portionen} Portionen (keine automatische Mengenumrechnung, da Zutaten nicht strukturiert erfasst)</div>` : ''}
+             <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
         <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Anleitung</div>
         <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>
         <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
@@ -627,14 +630,23 @@
 
   function startEditAsCopy(id) {
     const r = allRecipesCache.find(rec => rec.id === id);
-    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
+    editingCopyOf = {
+      id: r.id,
+      quelle_url: r.quelle_url || null,
+      zutaten_strukturiert: r.zutaten_strukturiert || null,
+      original_zutaten_text: r.zutaten || ''
+    };
 
     document.getElementById('recipe-titel-input').value = r.titel;
     document.getElementById('recipe-zutaten').value = r.zutaten || '';
     document.getElementById('recipe-anleitung').value = r.anleitung || '';
+    document.getElementById('recipe-portionen-input').value = r.basis_portionen || '';
 
     document.getElementById('edit-mode-original-title').textContent = r.titel;
     document.getElementById('edit-mode-banner').style.display = 'block';
+    document.getElementById('edit-mode-mengen-hinweis').textContent = r.zutaten_strukturiert
+      ? '(Mengenangaben werden mit übernommen, solange du die Zutaten nicht änderst)'
+      : '';
 
     document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
