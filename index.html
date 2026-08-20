@@ -290,6 +290,7 @@
       document.getElementById('recipe-anleitung').value = "";
       document.getElementById('recipe-portionen-input').value = "";
       document.getElementById('edit-mode-banner').style.display = 'none';
+      document.getElementById('edit-mode-mengen-hinweis').textContent = '';
       editingCopyOf = null;
       pendingImportUrl = null;
       pendingZutatenStrukturiert = null;
@@ -310,6 +311,7 @@
   // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
   function insertRecipe(titel, zutaten, anleitung, kopieVonId) {
     const manuellePortionen = document.getElementById('recipe-portionen-input').value;
+    const zutatenUnveraendert = editingCopyOf && editingCopyOf.original_zutaten_text === zutaten;
     return fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
       method: "POST",
       headers: {
@@ -325,7 +327,7 @@
         kopie_von: kopieVonId,
         quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null),
         basis_portionen: pendingBasisPortionen || (manuellePortionen ? parseInt(manuellePortionen, 10) : null),
-        zutaten_strukturiert: pendingZutatenStrukturiert || null
+        zutaten_strukturiert: pendingZutatenStrukturiert || (zutatenUnveraendert ? editingCopyOf.zutaten_strukturiert : null)
       })
     });
   }
@@ -657,6 +659,8 @@
     document.getElementById('recipe-titel-input').value = '';
     document.getElementById('recipe-zutaten').value = '';
     document.getElementById('recipe-anleitung').value = '';
+    document.getElementById('recipe-portionen-input').value = '';
+    document.getElementById('edit-mode-mengen-hinweis').textContent = '';
   }
 
   // ---- Rezept löschen ----
@@ -890,17 +894,31 @@
   }
 
   // ---- Ergebnis darstellen ----
+  let renderResultKriterienListe = [];
+  let quickAntworten = {};
+
   function renderResult(output, abgeschlossen, ergebnis, progress) {
     const card = document.getElementById('result-card');
     let html = `<div class="card">`;
+    renderResultKriterienListe = output.kriterien_bewertung || [];
+    quickAntworten = {};
 
     if (output.kriterien_bewertung && output.kriterien_bewertung.length > 0) {
-      html += output.kriterien_bewertung.map(k => `
-        <div class="kriterium">
+      html += output.kriterien_bewertung.map((k, idx) => {
+        const zeigtButtons = !abgeschlossen && k.status === 'unklar';
+        return `
+        <div class="kriterium" style="${zeigtButtons ? 'flex-direction:column; align-items:flex-start; gap:6px;' : ''}">
           <span>${k.kriterium}</span>
-          <span class="badge ${k.status}">${k.status.replace('_', ' ')}</span>
+          ${zeigtButtons
+            ? `<div style="display:flex; gap:6px;">
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'ja', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Ja</button>
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'nein', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Nein</button>
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'unsicher', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Weiß nicht</button>
+               </div>`
+            : `<span class="badge ${k.status}">${k.status.replace('_', ' ')}</span>`}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     if (output.fehler_erkannt && output.fehler_erkannt.length > 0) {
@@ -913,6 +931,15 @@
 
     if (!abgeschlossen && output.rueckfrage) {
       html += `<div class="rueckfrage-box"><strong>Rückfrage:</strong> ${output.rueckfrage}</div>`;
+    }
+
+    if (!abgeschlossen && output.kriterien_bewertung?.some(k => k.status === 'unklar')) {
+      html += `
+        <div style="margin-top:10px;">
+          <textarea id="quick-antwort-notiz" placeholder="Weitere Anmerkungen (optional)" style="min-height:60px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit;"></textarea>
+          <button class="primary" style="margin-top:8px;" onclick="submitQuickAntworten()">Antwort senden</button>
+        </div>
+      `;
     }
 
     if (abgeschlossen) {
@@ -930,6 +957,37 @@
 
     html += `</div>`;
     card.innerHTML = html;
+  }
+
+  // ---- Ja/Nein/Weiß-nicht-Auswahl merken, Button optisch hervorheben ----
+  function setQuickAntwort(idx, wert, btnEl) {
+    const kriteriumText = renderResultKriterienListe[idx]?.kriterium;
+    if (!kriteriumText) return;
+    quickAntworten[idx] = { text: kriteriumText, wert };
+
+    btnEl.parentElement.querySelectorAll('button').forEach(b => {
+      b.style.background = 'none';
+      b.style.color = 'var(--ink)';
+      b.style.borderColor = 'var(--border)';
+    });
+    btnEl.style.background = 'var(--accent)';
+    btnEl.style.color = 'white';
+    btnEl.style.borderColor = 'var(--accent)';
+  }
+
+  // ---- Aus den Ja/Nein-Antworten einen Antworttext zusammensetzen und absenden ----
+  function submitQuickAntworten() {
+    const praefix = { ja: 'Ja', nein: 'Nein', unsicher: 'Unsicher' };
+    const zeilen = Object.values(quickAntworten).map(a => `${praefix[a.wert]}: ${a.text}`);
+
+    const notizEl = document.getElementById('quick-antwort-notiz');
+    const notiz = notizEl ? notizEl.value.trim() : '';
+    if (notiz) zeilen.push(notiz);
+
+    if (zeilen.length === 0) return; // nichts ausgewählt und keine Notiz -> nichts zu senden
+
+    document.getElementById('beschreibung').value = zeilen.join('\n');
+    submitReflection();
   }
 
   // ---- Fortschritt laden ----
