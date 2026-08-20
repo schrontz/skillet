@@ -141,16 +141,18 @@
         style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
 
       <label style="margin-top:14px;">Zutaten</label>
-      <textarea id="recipe-zutaten" placeholder="3 Eier, 50g Speckwürfel, Butter, Salz, Pfeffer..."></textarea>
+      <div id="zutaten-rows"></div>
+      <button type="button" onclick="addZutatRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Zutat hinzufügen</button>
 
       <label style="margin-top:14px;">Portionen (optional, für Mengenumrechnung)</label>
       <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4"
         style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
 
       <label style="margin-top:14px;">Anleitung</label>
-      <textarea id="recipe-anleitung" placeholder="Speck in der Pfanne knusprig braten, Eier verquirlen..."></textarea>
+      <div id="schritte-rows"></div>
+      <button type="button" onclick="addSchrittRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Schritt hinzufügen</button>
 
-      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()">Rezept speichern</button>
+      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:18px;">Rezept speichern</button>
       <div class="status-line" id="recipe-status-line"></div>
     </div>
 
@@ -204,10 +206,81 @@
     if (tab === 'history') loadHistory();
   }
 
+  // ---- Dynamische Zutaten-Zeilen ----
+  function addZutatRow(menge = '', einheit = '', name = '') {
+    const container = document.getElementById('zutaten-rows');
+    const row = document.createElement('div');
+    row.className = 'zutat-row';
+    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:center;';
+    row.innerHTML = `
+      <input type="number" step="any" placeholder="Menge" value="${menge ?? ''}" class="zutat-menge" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <input type="text" placeholder="Einheit" value="${einheit ?? ''}" class="zutat-einheit" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <input type="text" placeholder="Zutat" value="${name ?? ''}" class="zutat-name" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <button type="button" onclick="this.parentElement.remove()" style="width:auto; padding:6px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;">×</button>
+    `;
+    container.appendChild(row);
+  }
+
+  function clearZutatenRows() {
+    document.getElementById('zutaten-rows').innerHTML = '';
+  }
+
+  function getZutatenFromForm() {
+    return Array.from(document.querySelectorAll('#zutaten-rows .zutat-row')).map(row => {
+      const menge = row.querySelector('.zutat-menge').value;
+      const einheit = row.querySelector('.zutat-einheit').value.trim();
+      const name = row.querySelector('.zutat-name').value.trim();
+      return { menge: menge ? parseFloat(menge) : null, einheit: einheit || null, name };
+    }).filter(z => z.name);
+  }
+
+  // ---- Dynamische Schritt-Zeilen (Pfeil-Buttons statt Drag-and-drop) ----
+  function addSchrittRow(text = '') {
+    const container = document.getElementById('schritte-rows');
+    const row = document.createElement('div');
+    row.className = 'schritt-row';
+    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;';
+    row.innerHTML = `
+      <span class="schritt-nr muted" style="padding-top:10px; width:22px; flex-shrink:0;"></span>
+      <textarea class="schritt-text" placeholder="Schritt beschreiben..." style="flex:1; min-height:50px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">${text}</textarea>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        <button type="button" onclick="moveSchrittRow(this, -1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↑</button>
+        <button type="button" onclick="moveSchrittRow(this, 1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↓</button>
+        <button type="button" onclick="this.closest('.schritt-row').remove(); renumberSchritte();" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">×</button>
+      </div>
+    `;
+    container.appendChild(row);
+    renumberSchritte();
+  }
+
+  function clearSchritteRows() {
+    document.getElementById('schritte-rows').innerHTML = '';
+  }
+
+  function renumberSchritte() {
+    document.querySelectorAll('#schritte-rows .schritt-row .schritt-nr').forEach((el, i) => {
+      el.textContent = (i + 1) + '.';
+    });
+  }
+
+  function moveSchrittRow(btnEl, direction) {
+    const row = btnEl.closest('.schritt-row');
+    if (direction === -1 && row.previousElementSibling) {
+      row.parentElement.insertBefore(row, row.previousElementSibling);
+    } else if (direction === 1 && row.nextElementSibling) {
+      row.parentElement.insertBefore(row.nextElementSibling, row);
+    }
+    renumberSchritte();
+  }
+
+  function getSchritteFromForm() {
+    return Array.from(document.querySelectorAll('#schritte-rows .schritt-text'))
+      .map(t => t.value.trim())
+      .filter(Boolean);
+  }
+
   // ---- Rezept von URL importieren, bestehendes Formular befüllen ----
   let pendingImportUrl = null;
-  let pendingZutatenStrukturiert = null;
-  let pendingBasisPortionen = null;
 
   async function importRecipeFromUrl() {
     const url = document.getElementById('import-url-input').value.trim();
@@ -233,12 +306,27 @@
       }
 
       document.getElementById('recipe-titel-input').value = data.titel || "";
-      document.getElementById('recipe-zutaten').value = data.zutaten || "";
-      document.getElementById('recipe-anleitung').value = data.anleitung || "";
       document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
+
+      clearZutatenRows();
+      if (data.zutatenStrukturiert && data.zutatenStrukturiert.length > 0) {
+        data.zutatenStrukturiert.forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+      } else if (data.zutaten) {
+        // kein strukturiertes Ergebnis -> jede Zeile des Freitexts als Zutat ohne Menge übernehmen
+        data.zutaten.split("\n").filter(Boolean).forEach(z => addZutatRow('', '', z.trim()));
+      }
+      if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+      clearSchritteRows();
+      if (data.anleitung) {
+        // "1. ...", "2. ..." am Zeilenanfang abtrennen, falls vorhanden
+        data.anleitung.split("\n").filter(Boolean).forEach(zeile => {
+          addSchrittRow(zeile.replace(/^\d+\.\s*/, '').trim());
+        });
+      }
+      if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+
       pendingImportUrl = url;
-      pendingZutatenStrukturiert = data.zutatenStrukturiert || null;
-      pendingBasisPortionen = data.basisPortionen || null;
 
       const quelle = data.source === "structured" ? "strukturierte Daten" : "KI-Extraktion";
       statusLine.textContent = `Importiert (${quelle}). Bitte prüfen und ggf. anpassen, dann unten speichern.`;
@@ -251,9 +339,13 @@
   // ---- Rezept speichern ----
   async function submitRecipe() {
     const titel = document.getElementById('recipe-titel-input').value.trim();
-    const zutaten = document.getElementById('recipe-zutaten').value.trim();
-    const anleitung = document.getElementById('recipe-anleitung').value.trim();
+    const zutatenListe = getZutatenFromForm();
+    const schritteListe = getSchritteFromForm();
     if (!titel) return;
+
+    // Freitext-Versionen ableiten (für Technik-Erkennung und Abwärtskompatibilität)
+    const zutaten = zutatenListe.map(z => [z.menge, z.einheit, z.name].filter(Boolean).join(' ')).join('\n');
+    const anleitung = schritteListe.map((s, i) => `${i + 1}. ${s}`).join('\n');
 
     const btn = document.getElementById('recipe-submit-btn');
     const statusLine = document.getElementById('recipe-status-line');
@@ -264,7 +356,7 @@
       let kopieVonId = editingCopyOf ? editingCopyOf.id : null;
       let hinweisOriginalWeg = false;
 
-      let res = await insertRecipe(titel, zutaten, anleitung, kopieVonId);
+      let res = await insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe);
 
       if (!res.ok) {
         const errText = await res.text();
@@ -273,7 +365,7 @@
         if (isFkFehler && kopieVonId) {
           // Original wurde inzwischen gelöscht - ohne Verweis nochmal versuchen
           hinweisOriginalWeg = true;
-          res = await insertRecipe(titel, zutaten, anleitung, null);
+          res = await insertRecipe(titel, zutaten, anleitung, null, zutatenListe, schritteListe);
         }
 
         if (!res.ok) {
@@ -286,15 +378,13 @@
 
       const [savedRecipe] = await res.json();
       document.getElementById('recipe-titel-input').value = "";
-      document.getElementById('recipe-zutaten').value = "";
-      document.getElementById('recipe-anleitung').value = "";
+      clearZutatenRows(); addZutatRow();
+      clearSchritteRows(); addSchrittRow();
       document.getElementById('recipe-portionen-input').value = "";
       document.getElementById('edit-mode-banner').style.display = 'none';
       document.getElementById('edit-mode-mengen-hinweis').textContent = '';
       editingCopyOf = null;
       pendingImportUrl = null;
-      pendingZutatenStrukturiert = null;
-      pendingBasisPortionen = null;
       statusLine.textContent = hinweisOriginalWeg
         ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
         : "Gespeichert! Erkenne verwendete Techniken...";
@@ -309,9 +399,8 @@
   }
 
   // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
-  function insertRecipe(titel, zutaten, anleitung, kopieVonId) {
+  function insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe) {
     const manuellePortionen = document.getElementById('recipe-portionen-input').value;
-    const zutatenUnveraendert = editingCopyOf && editingCopyOf.original_zutaten_text === zutaten;
     return fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
       method: "POST",
       headers: {
@@ -326,8 +415,9 @@
         anleitung,
         kopie_von: kopieVonId,
         quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null),
-        basis_portionen: pendingBasisPortionen || (manuellePortionen ? parseInt(manuellePortionen, 10) : null),
-        zutaten_strukturiert: pendingZutatenStrukturiert || (zutatenUnveraendert ? editingCopyOf.zutaten_strukturiert : null)
+        basis_portionen: manuellePortionen ? parseInt(manuellePortionen, 10) : null,
+        zutaten_strukturiert: zutatenListe && zutatenListe.length > 0 ? zutatenListe : null,
+        anleitung_schritte: schritteListe && schritteListe.length > 0 ? schritteListe : null
       })
     });
   }
@@ -521,7 +611,7 @@
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am&order=erstellt_am.desc`,
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am&order=erstellt_am.desc`,
       { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
     );
     const data = await res.json();
@@ -567,11 +657,14 @@
                <span id="portionen-anzeige-${id}" style="font-weight:600;">${r.basis_portionen}</span>
                <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', 1)">+</button>
              </div>
+             <div class="muted" style="font-size:0.78rem; margin-bottom:4px;">Tipp: Du kannst auch direkt eine Zutaten-Menge unten ändern, um danach umzurechnen.</div>
              <div id="zutaten-liste-${id}"></div>`
           : `${nurPortionenOhneStruktur ? `<div class="muted" style="font-size:0.85rem; margin-bottom:4px;">Für ${r.basis_portionen} Portionen (keine automatische Mengenumrechnung, da Zutaten nicht strukturiert erfasst)</div>` : ''}
              <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
         <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Anleitung</div>
-        <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>
+        ${r.anleitung_schritte && r.anleitung_schritte.length > 0
+          ? `<ol style="padding-left:20px; margin:0 0 10px;">${r.anleitung_schritte.map(s => `<li style="margin-bottom:6px;">${s}</li>`).join('')}</ol>`
+          : `<div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>`}
         <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
         <div id="recipe-techniques-${id}" class="muted">Lade...</div>
         ${r.quelle_url ? `<div style="margin-top:8px;"><a href="${r.quelle_url}" target="_blank" style="color: var(--accent); font-size:0.85rem;">Quelle öffnen</a></div>` : ''}
@@ -611,8 +704,30 @@
       const neueMenge = z.menge * faktor;
       // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
       const anzeige = neueMenge < 10 ? Math.round(neueMenge * 10) / 10 : Math.round(neueMenge);
-      return `<div class="kriterium"><span>${z.name}</span><span>${anzeige} ${z.einheit || ''}</span></div>`;
+      return `<div class="kriterium">
+        <span>${z.name}</span>
+        <span>
+          <input type="number" step="any" value="${anzeige}" data-basis="${z.menge}" data-id="${id}"
+            onchange="scaleByZutat(this)"
+            style="width:60px; padding:2px 4px; border-radius:4px; border:1px solid var(--border); text-align:right; font-family:inherit;">
+          ${z.einheit || ''}
+        </span>
+      </div>`;
     }).join('');
+  }
+
+  // ---- Skalierung über eine einzelne Zutat statt über Portionen (z. B. "hab nur 400g statt 500g") ----
+  function scaleByZutat(inputEl) {
+    const id = inputEl.dataset.id;
+    const basisMenge = parseFloat(inputEl.dataset.basis);
+    const neueMenge = parseFloat(inputEl.value);
+    if (!neueMenge || !basisMenge) return;
+
+    const r = allRecipesCache.find(rec => rec.id === id);
+    const faktor = neueMenge / basisMenge;
+    aktuellePortionen[id] = Math.round(r.basis_portionen * faktor * 10) / 10;
+    document.getElementById(`portionen-anzeige-${id}`).textContent = aktuellePortionen[id];
+    renderZutatenListe(id);
   }
 
   // ---- Verknüpfte Techniken für die Detailansicht laden ----
@@ -632,23 +747,29 @@
 
   function startEditAsCopy(id) {
     const r = allRecipesCache.find(rec => rec.id === id);
-    editingCopyOf = {
-      id: r.id,
-      quelle_url: r.quelle_url || null,
-      zutaten_strukturiert: r.zutaten_strukturiert || null,
-      original_zutaten_text: r.zutaten || ''
-    };
+    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
 
     document.getElementById('recipe-titel-input').value = r.titel;
-    document.getElementById('recipe-zutaten').value = r.zutaten || '';
-    document.getElementById('recipe-anleitung').value = r.anleitung || '';
     document.getElementById('recipe-portionen-input').value = r.basis_portionen || '';
+
+    clearZutatenRows();
+    if (r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0) {
+      r.zutaten_strukturiert.forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+    } else if (r.zutaten) {
+      r.zutaten.split("\n").filter(Boolean).forEach(z => addZutatRow('', '', z.trim()));
+    }
+    if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+    clearSchritteRows();
+    if (r.anleitung_schritte && r.anleitung_schritte.length > 0) {
+      r.anleitung_schritte.forEach(s => addSchrittRow(s));
+    } else if (r.anleitung) {
+      r.anleitung.split("\n").filter(Boolean).forEach(zeile => addSchrittRow(zeile.replace(/^\d+\.\s*/, '').trim()));
+    }
+    if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
 
     document.getElementById('edit-mode-original-title').textContent = r.titel;
     document.getElementById('edit-mode-banner').style.display = 'block';
-    document.getElementById('edit-mode-mengen-hinweis').textContent = r.zutaten_strukturiert
-      ? '(Mengenangaben werden mit übernommen, solange du die Zutaten nicht änderst)'
-      : '';
 
     document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
@@ -657,10 +778,9 @@
     editingCopyOf = null;
     document.getElementById('edit-mode-banner').style.display = 'none';
     document.getElementById('recipe-titel-input').value = '';
-    document.getElementById('recipe-zutaten').value = '';
-    document.getElementById('recipe-anleitung').value = '';
+    clearZutatenRows(); addZutatRow();
+    clearSchritteRows(); addSchrittRow();
     document.getElementById('recipe-portionen-input').value = '';
-    document.getElementById('edit-mode-mengen-hinweis').textContent = '';
   }
 
   // ---- Rezept löschen ----
@@ -1129,6 +1249,8 @@
   }
 
   loadTechniques();
+  addZutatRow();
+  addSchrittRow();
 </script>
 </body>
 </html>
