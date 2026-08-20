@@ -676,11 +676,24 @@
 
   // ---- Techniken laden ----
   async function loadTechniques() {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques?select=id,name&order=name.asc`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques?select=id,name,kurzbeschreibung,kernkriterien,typische_fehler,root_kategorie&order=name.asc`, {
       headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
     });
     techniques = await res.json();
     renderTechniqueOptions(techniques);
+  }
+
+  // ---- Wiederverwendbarer Steckbrief-Baustein (Reflexion + Fortschritt nutzen das gleiche) ----
+  function steckbriefHtml(technique) {
+    if (!technique) return '<div class="muted">Kein Steckbrief verfügbar.</div>';
+    return `
+      ${technique.root_kategorie ? `<div class="muted" style="font-size:0.8rem; margin-bottom:6px;">${technique.root_kategorie}</div>` : ''}
+      ${technique.kurzbeschreibung ? `<p style="margin:0 0 10px;">${technique.kurzbeschreibung}</p>` : ''}
+      ${technique.typische_fehler && technique.typische_fehler.length > 0
+        ? `<div style="font-size:0.85rem; font-weight:600; margin-bottom:4px;">Typische Fehler</div>
+           <div class="fehler-liste">${technique.typische_fehler.join(' ')}</div>`
+        : ''}
+    `;
   }
 
   // ---- Techniken-Dropdown befüllen (volle oder gefilterte Liste) ----
@@ -903,6 +916,18 @@
     renderResultKriterienListe = output.kriterien_bewertung || [];
     quickAntworten = {};
 
+    const aktuelleTechnik = techniques.find(t => t.id === currentTechniqueId);
+    if (aktuelleTechnik) {
+      html += `
+        <div style="margin-bottom:10px;">
+          <a href="#" onclick="event.preventDefault(); toggleSteckbriefInfo();" style="color: var(--accent); font-size:0.85rem;">ℹ️ Warum diese Kriterien?</a>
+          <div id="steckbrief-info-box" style="display:none; margin-top:8px; padding:10px 12px; background: var(--bg); border-radius:8px;">
+            ${steckbriefHtml(aktuelleTechnik)}
+          </div>
+        </div>
+      `;
+    }
+
     if (output.kriterien_bewertung && output.kriterien_bewertung.length > 0) {
       html += output.kriterien_bewertung.map((k, idx) => {
         const zeigtButtons = !abgeschlossen && k.status === 'unklar';
@@ -959,6 +984,12 @@
     card.innerHTML = html;
   }
 
+  // ---- Steckbrief-Info in der Reflexion auf-/zuklappen ----
+  function toggleSteckbriefInfo() {
+    const box = document.getElementById('steckbrief-info-box');
+    if (box) box.style.display = box.style.display === 'block' ? 'none' : 'block';
+  }
+
   // ---- Ja/Nein/Weiß-nicht-Auswahl merken, Button optisch hervorheben ----
   function setQuickAntwort(idx, wert, btnEl) {
     const kriteriumText = renderResultKriterienListe[idx]?.kriterium;
@@ -991,29 +1022,44 @@
   }
 
   // ---- Fortschritt laden ----
+  let progressCache = [];
+
   async function loadProgress() {
     const listEl = document.getElementById('progress-list');
     listEl.innerHTML = `<div class="muted">Lade Fortschritt...</div>`;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/techniques?select=id,name,technique_progress(level,angewendet_count,sauber_bestaetigt_count)&order=name.asc`,
+      `${SUPABASE_URL}/rest/v1/techniques?select=id,name,kurzbeschreibung,kernkriterien,typische_fehler,root_kategorie,technique_progress(level,angewendet_count,sauber_bestaetigt_count)&order=name.asc`,
       { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
     );
     const data = await res.json();
+    progressCache = data;
 
-    listEl.innerHTML = data.map(t => {
+    listEl.innerHTML = data.map((t, idx) => {
       const p = (t.technique_progress && t.technique_progress[0]) || { level: 0, angewendet_count: 0, sauber_bestaetigt_count: 0 };
       const dots = [0, 1, 2, 3].map(i => `<span class="dot ${i <= p.level ? 'filled' : ''}"></span>`).join('');
       return `
-        <div class="progress-item">
-          <div>
-            <div>${t.name}</div>
-            <div class="muted">${p.sauber_bestaetigt_count}x sauber bestätigt · ${p.angewendet_count}x angewendet</div>
+        <div class="progress-item" style="align-items:flex-start; flex-direction:column; cursor:pointer;" onclick="toggleProgressDetail(${idx})">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <div>
+              <div>${t.name}</div>
+              <div class="muted">${p.sauber_bestaetigt_count}x sauber bestätigt · ${p.angewendet_count}x angewendet</div>
+            </div>
+            <div class="level-dots">${dots}</div>
           </div>
-          <div class="level-dots">${dots}</div>
+          <div id="progress-detail-${idx}" style="display:none; width:100%; margin-top:10px;"></div>
         </div>
       `;
     }).join('');
+  }
+
+  function toggleProgressDetail(idx) {
+    const el = document.getElementById(`progress-detail-${idx}`);
+    const isOpen = el.style.display === 'block';
+    document.querySelectorAll('[id^="progress-detail-"]').forEach(e => e.style.display = 'none');
+    if (isOpen) return;
+    el.innerHTML = `<div style="border-top:1px solid var(--border); padding-top:10px;">${steckbriefHtml(progressCache[idx])}</div>`;
+    el.style.display = 'block';
   }
 
   // ---- Verlauf: alle abgeschlossenen Reflexionen chronologisch ----
