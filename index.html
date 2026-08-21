@@ -1,638 +1,1275 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Nest</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="favicon.png">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Nest">
-  <meta name="theme-color" content="#abdeba">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skillet – Koch-Skills</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#b5522f">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --ink: #2b2420;
+    --muted: #786f64;
+    --accent: #b5522f;
+    --accent-light: #f1d9cd;
+    --ok: #4a7c59;
+    --warn: #c9973a;
+    --border: #e6ded3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    margin: 0;
+    padding: 24px 16px 80px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.95rem; }
+  nav {
+    display: flex; gap: 8px; margin-bottom: 24px;
+    border-bottom: 1px solid var(--border); padding-bottom: 12px;
+  }
+  nav button {
+    background: none; border: none; padding: 8px 14px; border-radius: 8px;
+    font-size: 0.95rem; cursor: pointer; color: var(--muted);
+  }
+  nav button.active { background: var(--accent); color: white; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  select, textarea, button.primary {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 1rem; font-family: inherit;
+  }
+  textarea { min-height: 100px; resize: vertical; margin-top: 10px; }
+  button.primary {
+    background: var(--accent); color: white; border: none;
+    margin-top: 14px; cursor: pointer; font-weight: 600;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .kriterium { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--border); }
+  .kriterium:last-child { border-bottom: none; }
+  .badge { padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+  .badge.erfuellt { background: #dcece0; color: var(--ok); }
+  .badge.unklar { background: #f5ecd8; color: var(--warn); }
+  .badge.nicht_erfuellt { background: #f4dcd6; color: var(--accent); }
+  .fehler-liste { background: #fdf4ef; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 0.9rem; }
+  .rueckfrage-box { background: var(--accent-light); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .progress-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .progress-item:last-child { border-bottom: none; }
+  .level-dots { display: flex; gap: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+  .dot.filled { background: var(--accent); }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+  .status-line { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
+</style>
 </head>
 <body>
-  <h1>Nest</h1>
+<div class="wrap">
+  <h1>🍳 Skillet</h1>
+  <div class="subtitle">Koch-Skills reflektieren und wachsen sehen</div>
 
-  <div id="login-view">
-    <input type="email" id="email" placeholder="E-Mail">
-    <input type="password" id="password" placeholder="Passwort">
-    <button id="auth-submit-btn" onclick="submitAuth()">Login</button>
-    <p id="login-status"></p>
-    <p><a href="#" id="auth-mode-toggle" onclick="toggleAuthMode(); return false;">Noch keinen Account? Registrieren</a></p>
+  <nav>
+    <button id="tab-reflect" class="active" onclick="showTab('reflect')">Reflektieren</button>
+    <button id="tab-recipes" onclick="showTab('recipes')">Rezepte</button>
+    <button id="tab-progress" onclick="showTab('progress')">Fortschritt</button>
+    <button id="tab-history" onclick="showTab('history')">Verlauf</button>
+  </nav>
+
+  <!-- REFLECT VIEW -->
+  <div id="view-reflect">
+    <div class="card">
+      <label for="reflect-recipe-select">Rezept (optional)</label>
+      <select id="reflect-recipe-select" onchange="onReflectRecipeChange()">
+        <option value="">Kein Rezept / freie Auswahl</option>
+      </select>
+
+      <div id="technique-select-wrapper" style="margin-top:14px;">
+        <label for="technique-select">Technik</label>
+        <select id="technique-select" onchange="onTechniqueSelectChange()">
+          <option value="">Automatisch erkennen lassen</option>
+        </select>
+      </div>
+      <div id="technique-fixed-label" style="display:none; margin-top:14px;">
+        <label>Technik</label>
+        <div style="padding:10px 12px; background: var(--accent-light); border-radius:8px; font-weight:600;"></div>
+      </div>
+
+      <div id="auto-titel-wrapper" style="margin-top:14px;">
+        <label for="auto-titel-input">Titel (optional, nur falls kein Rezept gewählt)</label>
+        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht"
+          style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+      </div>
+
+      <label style="margin-top:14px;">Was hast du gemacht?</label>
+      <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
+
+      <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
+      <div class="status-line" id="status-line"></div>
+    </div>
+
+    <div id="auto-detect-info" class="muted" style="padding:0 4px;"></div>
+    <div id="reflect-vorschlag-card"></div>
+
+    <div id="result-card"></div>
   </div>
 
-  <div id="onboarding-view" style="display:none;">
-    <h2>Haushalt erstellen</h2>
-    <input type="text" id="new-household-name" placeholder="Name (z.B. Unsere WG)">
-    <button onclick="createHousehold()">Haushalt erstellen</button>
-    <p id="create-household-status"></p>
+  <!-- RECIPES VIEW -->
+  <div id="view-recipes" style="display:none;">
+    <div class="card">
+      <label for="import-url-input">Von URL importieren</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="import-url-input" placeholder="https://..."
+          style="flex:1; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+        <button class="primary" style="width:auto; padding:10px 18px; margin-top:0;" onclick="importRecipeFromUrl()">Importieren</button>
+      </div>
+      <div class="status-line" id="import-status-line"></div>
+    </div>
 
-    <h2>Oder: Haushalt beitreten</h2>
-    <input type="text" id="join-code-input" placeholder="Code eingeben">
-    <button onclick="joinHousehold()">Beitreten</button>
-    <p id="join-household-status"></p>
+    <div class="card">
+      <div id="edit-mode-banner" style="display:none; background: var(--accent-light); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.9rem;">
+        Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.
+        <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
+        <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent); margin-left:8px;">Abbrechen</a>
+      </div>
+      <label for="recipe-titel-input">Titel</label>
+      <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck"
+        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
 
-    <button onclick="logout()">Logout</button>
+      <label style="margin-top:14px;">Zutaten</label>
+      <div id="zutaten-rows"></div>
+      <button type="button" onclick="addZutatRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Zutat hinzufügen</button>
+
+      <label style="margin-top:14px;">Portionen (optional, für Mengenumrechnung)</label>
+      <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4"
+        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+
+      <label style="margin-top:14px;">Anleitung</label>
+      <div id="schritte-rows"></div>
+      <button type="button" onclick="addSchrittRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Schritt hinzufügen</button>
+
+      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:18px;">Rezept speichern</button>
+      <div class="status-line" id="recipe-status-line"></div>
+    </div>
+
+    <div id="detect-card"></div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:10px;">Deine Rezepte</div>
+      <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
+    </div>
   </div>
 
-  <div id="app-view" style="display:none;">
-    <nav class="tabs">
-      <button class="tab-btn" id="tab-btn-liste" onclick="showTab('liste')">Liste</button>
-      <button class="tab-btn" id="tab-btn-einstellungen" onclick="showTab('einstellungen')">Einstellungen</button>
-    </nav>
+  <!-- PROGRESS VIEW -->
+  <div id="view-progress" style="display:none;">
+    <div class="card" id="progress-list">
+      <div class="muted">Lade Fortschritt...</div>
+    </div>
+  </div>
 
-    <div id="tab-liste" class="tab-panel">
-      <div class="add-card">
-        <button type="button" id="toggle-add-link" class="add-toggle-card" onclick="toggleAddForm()">+ Artikel hinzufügen</button>
-        <div id="add-form" style="display:none;">
-          <input type="text" id="item-name" placeholder="Name (z.B. Äpfel)">
-          <input type="number" id="item-menge" placeholder="Menge" step="0.1">
-          <select id="item-einheit">
-            <option value="stueck">Stück</option>
-            <option value="gramm">Gramm</option>
-            <option value="kilogramm">Kilogramm</option>
-            <option value="liter">Liter</option>
-            <option value="milliliter">Milliliter</option>
-            <option value="packung">Packung</option>
-          </select>
-          <select id="item-store">
-            <option value="">– kein Laden –</option>
-          </select>
-          <button onclick="addItem()">Hinzufügen</button>
-          <p id="add-status"></p>
+  <!-- HISTORY VIEW -->
+  <div id="view-history" style="display:none;">
+    <div class="card" id="history-list">
+      <div class="muted">Lade Verlauf...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==== KONFIGURATION: hier deine Werte eintragen ====
+  const SUPABASE_URL = "https://isqbuagacqnmeephathu.supabase.co";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzcWJ1YWdhY3FubWVlcGhhdGh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0NjU4MTcsImV4cCI6MjEwMTA0MTgxN30.pcRqIk3DMfhCsOgrln56qAnyNJBlJIG0shmy69TlREA";
+  // =====================================================
+
+  let techniques = [];
+  let currentReflectionId = null;
+  let currentTechniqueId = null;
+  let currentReflectRecipeId = null;
+
+  // ---- Tabs ----
+  function showTab(tab) {
+    document.getElementById('view-reflect').style.display = tab === 'reflect' ? 'block' : 'none';
+    document.getElementById('view-recipes').style.display = tab === 'recipes' ? 'block' : 'none';
+    document.getElementById('view-progress').style.display = tab === 'progress' ? 'block' : 'none';
+    document.getElementById('view-history').style.display = tab === 'history' ? 'block' : 'none';
+    document.getElementById('tab-reflect').classList.toggle('active', tab === 'reflect');
+    document.getElementById('tab-recipes').classList.toggle('active', tab === 'recipes');
+    document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
+    document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+    if (tab === 'progress') loadProgress();
+    if (tab === 'recipes') loadRecipes();
+    if (tab === 'reflect') loadRecipesForReflect();
+    if (tab === 'history') loadHistory();
+  }
+
+  // ---- Dynamische Zutaten-Zeilen ----
+  function addZutatRow(menge = '', einheit = '', name = '') {
+    const container = document.getElementById('zutaten-rows');
+    const row = document.createElement('div');
+    row.className = 'zutat-row';
+    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:center;';
+    row.innerHTML = `
+      <input type="number" step="any" placeholder="Menge" value="${menge ?? ''}" class="zutat-menge" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <input type="text" placeholder="Einheit" value="${einheit ?? ''}" class="zutat-einheit" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <input type="text" placeholder="Zutat" value="${name ?? ''}" class="zutat-name" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
+      <button type="button" onclick="this.parentElement.remove()" style="width:auto; padding:6px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;">×</button>
+    `;
+    container.appendChild(row);
+  }
+
+  function clearZutatenRows() {
+    document.getElementById('zutaten-rows').innerHTML = '';
+  }
+
+  function getZutatenFromForm() {
+    return Array.from(document.querySelectorAll('#zutaten-rows .zutat-row')).map(row => {
+      const menge = row.querySelector('.zutat-menge').value;
+      const einheit = row.querySelector('.zutat-einheit').value.trim();
+      const name = row.querySelector('.zutat-name').value.trim();
+      return { menge: menge ? parseFloat(menge) : null, einheit: einheit || null, name };
+    }).filter(z => z.name);
+  }
+
+  // ---- Dynamische Schritt-Zeilen (Pfeil-Buttons statt Drag-and-drop) ----
+  function addSchrittRow(text = '') {
+    const container = document.getElementById('schritte-rows');
+    const row = document.createElement('div');
+    row.className = 'schritt-row';
+    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;';
+    row.innerHTML = `
+      <span class="schritt-nr muted" style="padding-top:10px; width:22px; flex-shrink:0;"></span>
+      <textarea class="schritt-text" placeholder="Schritt beschreiben..." style="flex:1; min-height:50px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">${text}</textarea>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        <button type="button" onclick="moveSchrittRow(this, -1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↑</button>
+        <button type="button" onclick="moveSchrittRow(this, 1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↓</button>
+        <button type="button" onclick="this.closest('.schritt-row').remove(); renumberSchritte();" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">×</button>
+      </div>
+    `;
+    container.appendChild(row);
+    renumberSchritte();
+  }
+
+  function clearSchritteRows() {
+    document.getElementById('schritte-rows').innerHTML = '';
+  }
+
+  function renumberSchritte() {
+    document.querySelectorAll('#schritte-rows .schritt-row .schritt-nr').forEach((el, i) => {
+      el.textContent = (i + 1) + '.';
+    });
+  }
+
+  function moveSchrittRow(btnEl, direction) {
+    const row = btnEl.closest('.schritt-row');
+    if (direction === -1 && row.previousElementSibling) {
+      row.parentElement.insertBefore(row, row.previousElementSibling);
+    } else if (direction === 1 && row.nextElementSibling) {
+      row.parentElement.insertBefore(row.nextElementSibling, row);
+    }
+    renumberSchritte();
+  }
+
+  function getSchritteFromForm() {
+    return Array.from(document.querySelectorAll('#schritte-rows .schritt-text'))
+      .map(t => t.value.trim())
+      .filter(Boolean);
+  }
+
+  // ---- Rezept von URL importieren, bestehendes Formular befüllen ----
+  let pendingImportUrl = null;
+
+  async function importRecipeFromUrl() {
+    const url = document.getElementById('import-url-input').value.trim();
+    if (!url) return;
+
+    const statusLine = document.getElementById('import-status-line');
+    statusLine.textContent = "Importiere...";
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/import-recipe`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        statusLine.textContent = "Fehler: " + data.error;
+        return;
+      }
+
+      document.getElementById('recipe-titel-input').value = data.titel || "";
+      document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
+
+      clearZutatenRows();
+      if (data.zutatenStrukturiert && data.zutatenStrukturiert.length > 0) {
+        data.zutatenStrukturiert.forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+      } else if (data.zutaten) {
+        // kein strukturiertes Ergebnis -> jede Zeile des Freitexts als Zutat ohne Menge übernehmen
+        data.zutaten.split("\n").filter(Boolean).forEach(z => addZutatRow('', '', z.trim()));
+      }
+      if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+      clearSchritteRows();
+      if (data.anleitung) {
+        // "1. ...", "2. ..." am Zeilenanfang abtrennen, falls vorhanden
+        data.anleitung.split("\n").filter(Boolean).forEach(zeile => {
+          addSchrittRow(zeile.replace(/^\d+\.\s*/, '').trim());
+        });
+      }
+      if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+
+      pendingImportUrl = url;
+
+      const quelle = data.source === "structured" ? "strukturierte Daten" : "KI-Extraktion";
+      statusLine.textContent = `Importiert (${quelle}). Bitte prüfen und ggf. anpassen, dann unten speichern.`;
+      document.getElementById('import-url-input').value = "";
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
+  }
+
+  // ---- Rezept speichern ----
+  async function submitRecipe() {
+    const titel = document.getElementById('recipe-titel-input').value.trim();
+    const zutatenListe = getZutatenFromForm();
+    const schritteListe = getSchritteFromForm();
+    if (!titel) return;
+
+    // Freitext-Versionen ableiten (für Technik-Erkennung und Abwärtskompatibilität)
+    const zutaten = zutatenListe.map(z => [z.menge, z.einheit, z.name].filter(Boolean).join(' ')).join('\n');
+    const anleitung = schritteListe.map((s, i) => `${i + 1}. ${s}`).join('\n');
+
+    const btn = document.getElementById('recipe-submit-btn');
+    const statusLine = document.getElementById('recipe-status-line');
+    btn.disabled = true;
+    statusLine.textContent = "Speichere...";
+
+    try {
+      let kopieVonId = editingCopyOf ? editingCopyOf.id : null;
+      let hinweisOriginalWeg = false;
+
+      let res = await insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        const isFkFehler = errText.includes('recipes_kopie_von_fkey') || errText.includes('23503');
+
+        if (isFkFehler && kopieVonId) {
+          // Original wurde inzwischen gelöscht - ohne Verweis nochmal versuchen
+          hinweisOriginalWeg = true;
+          res = await insertRecipe(titel, zutaten, anleitung, null, zutatenListe, schritteListe);
+        }
+
+        if (!res.ok) {
+          const err = await res.text();
+          statusLine.textContent = "Fehler: " + err;
+          btn.disabled = false;
+          return;
+        }
+      }
+
+      const [savedRecipe] = await res.json();
+      document.getElementById('recipe-titel-input').value = "";
+      clearZutatenRows(); addZutatRow();
+      clearSchritteRows(); addSchrittRow();
+      document.getElementById('recipe-portionen-input').value = "";
+      document.getElementById('edit-mode-banner').style.display = 'none';
+      document.getElementById('edit-mode-mengen-hinweis').textContent = '';
+      editingCopyOf = null;
+      pendingImportUrl = null;
+      statusLine.textContent = hinweisOriginalWeg
+        ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
+        : "Gespeichert! Erkenne verwendete Techniken...";
+      loadRecipes();
+
+      await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
+      statusLine.textContent = hinweisOriginalWeg ? "Gespeichert (ohne Kopie-Verweis, Original war weg)." : "Gespeichert!";
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
+    btn.disabled = false;
+  }
+
+  // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
+  function insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe) {
+    const manuellePortionen = document.getElementById('recipe-portionen-input').value;
+    return fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
+      method: "POST",
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        titel,
+        zutaten,
+        anleitung,
+        kopie_von: kopieVonId,
+        quelle_url: editingCopyOf ? editingCopyOf.quelle_url : (pendingImportUrl || null),
+        basis_portionen: manuellePortionen ? parseInt(manuellePortionen, 10) : null,
+        zutaten_strukturiert: zutatenListe && zutatenListe.length > 0 ? zutatenListe : null,
+        anleitung_schritte: schritteListe && schritteListe.length > 0 ? schritteListe : null
+      })
+    });
+  }
+
+  // ---- Techniken erkennen lassen und zur Bestätigung anzeigen ----
+  async function detectAndConfirmTechniques(recipe, titel, zutaten, anleitung) {
+    const detectCard = document.getElementById('detect-card');
+    detectCard.innerHTML = `<div class="card muted">Techniken werden erkannt...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/detect-techniques`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ recipe_id: recipe.id, titel, zutaten, anleitung })
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        detectCard.innerHTML = `<div class="card">Erkennung fehlgeschlagen: ${data.error}</div>`;
+        return;
+      }
+
+      const erkannt = new Set(data.erkannte_technik_ids || []);
+      // techniques ist bereits global geladen (aus loadTechniques)
+      detectCard.innerHTML = `
+        <div class="card">
+          <div style="margin-bottom:10px;">Erkannte Techniken für <strong>${titel}</strong> – bitte prüfen:</div>
+          ${techniques.map(t => `
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:0.92rem; cursor:pointer;">
+              <input type="checkbox" class="detect-checkbox" value="${t.id}" ${erkannt.has(t.id) ? 'checked' : ''}>
+              ${t.name}
+            </label>
+          `).join('')}
+          <button class="primary" onclick="confirmTechniques('${recipe.id}')">Bestätigen</button>
+        </div>
+      `;
+
+      if (data.neue_technik_vorschlag) {
+        renderNeueTechnikVorschlag(data.neue_technik_vorschlag, recipe.id);
+      }
+    } catch (e) {
+      detectCard.innerHTML = `<div class="card">Verbindungsfehler bei der Erkennung: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Vorschlag für neue Technik anzeigen (Anlegen/Ignorieren) ----
+  function renderNeueTechnikVorschlag(vorschlag, recipeId, containerId = 'detect-card') {
+    const box = document.createElement('div');
+    box.className = 'card';
+    box.id = 'neue-technik-card';
+    box.innerHTML = `
+      <div style="margin-bottom:8px;">💡 <strong>Neue Technik vorgeschlagen: ${vorschlag.name}</strong></div>
+      <div class="muted" style="margin-bottom:14px;">${vorschlag.begruendung}</div>
+      <div style="display:flex; gap:8px;">
+        <button class="primary" style="width:auto; flex:1;" onclick="generateTechniqueSteckbrief('${vorschlag.name.replace(/'/g, "\\'")}', '${recipeId}')">Steckbrief erstellen</button>
+        <button style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.getElementById('neue-technik-card').remove()">Ignorieren</button>
+      </div>
+    `;
+    document.getElementById(containerId).appendChild(box);
+  }
+
+  // ---- Steckbrief-Entwurf generieren lassen (nutzt B3-Prompt via Edge Function) ----
+  async function generateTechniqueSteckbrief(name, recipeId) {
+    const box = document.getElementById('neue-technik-card');
+    box.innerHTML = `<div class="muted">Steckbrief wird erstellt...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-technique`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name })
+      });
+      const steckbrief = await res.json();
+
+      if (steckbrief.error) {
+        box.innerHTML = `<div>Fehler: ${steckbrief.error}</div>`;
+        return;
+      }
+
+      box.innerHTML = `
+        <div style="margin-bottom:8px;"><strong>${steckbrief.name}</strong></div>
+        ${steckbrief.root_kategorie
+          ? `<div class="muted" style="margin-bottom:8px;">Kategorie: ${steckbrief.root_kategorie}</div>`
+          : `<div class="fehler-liste" style="margin-bottom:8px;">Keine Root-Kategorie passt: ${steckbrief.root_kategorie_hinweis || 'kein Hinweis angegeben'}</div>`}
+        <div class="muted" style="margin-bottom:10px;">${steckbrief.kurzbeschreibung}</div>
+        <div style="font-size:0.88rem; font-weight:600; margin-top:8px;">Kernkriterien</div>
+        ${steckbrief.kernkriterien.map(k => `<div class="kriterium"><span>${k}</span></div>`).join('')}
+        <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Typische Fehler</div>
+        <div class="fehler-liste">${steckbrief.typische_fehler.join(' ')}</div>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="primary" style="width:auto; flex:1;" id="save-technique-btn">Speichern</button>
+          <button style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="document.getElementById('neue-technik-card').remove()">Verwerfen</button>
+        </div>
+      `;
+      document.getElementById('save-technique-btn').onclick = () => saveNewTechnique(steckbrief, recipeId);
+    } catch (e) {
+      box.innerHTML = `<div>Verbindungsfehler: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Neue Technik final speichern + dem Rezept zuordnen ----
+  async function saveNewTechnique(steckbrief, recipeId) {
+    const box = document.getElementById('neue-technik-card');
+    box.innerHTML = `<div class="muted">Speichere...</div>`;
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify({
+          name: steckbrief.name,
+          kurzbeschreibung: steckbrief.kurzbeschreibung,
+          kernkriterien: steckbrief.kernkriterien,
+          typische_fehler: steckbrief.typische_fehler,
+          voraussetzungen: steckbrief.voraussetzungen || [],
+          root_kategorie: steckbrief.root_kategorie || null
+        })
+      });
+      const [newTechnique] = await res.json();
+
+      await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify({ recipe_id: recipeId, technique_id: newTechnique.id })
+      });
+
+      await loadTechniques(); // globale Liste aktualisieren, damit sie überall auftaucht
+      box.innerHTML = `<div class="muted">✅ "${newTechnique.name}" wurde angelegt und zugeordnet.</div>`;
+    } catch (e) {
+      box.innerHTML = `<div>Fehler beim Speichern: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Bestätigte Techniken in recipe_techniques speichern ----
+  async function confirmTechniques(recipeId) {
+    const checked = Array.from(document.querySelectorAll('.detect-checkbox:checked')).map(cb => cb.value);
+    const rows = checked.map(technique_id => ({ recipe_id: recipeId, technique_id }));
+
+    const detectCard = document.getElementById('detect-card');
+
+    if (rows.length === 0) {
+      detectCard.innerHTML = `<div class="card muted">Keine Techniken zugeordnet.</div>`;
+      return;
+    }
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify(rows)
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        detectCard.innerHTML = `<div class="card">Fehler beim Speichern: ${err}</div>`;
+        return;
+      }
+
+      detectCard.innerHTML = `<div class="card muted">✅ ${rows.length} Technik(en) zugeordnet.</div>`;
+    } catch (e) {
+      detectCard.innerHTML = `<div class="card">Verbindungsfehler: ${e.message}</div>`;
+    }
+  }
+
+  // ---- Rezepte laden ----
+  let allRecipesCache = [];
+
+  async function loadRecipes() {
+    const listEl = document.getElementById('recipe-list');
+    listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am&order=erstellt_am.desc`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const data = await res.json();
+    allRecipesCache = data;
+
+    if (!data.length) {
+      listEl.innerHTML = `<div class="muted">Noch keine Rezepte gespeichert.</div>`;
+      return;
+    }
+
+    const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
+
+    listEl.innerHTML = data.map(r => `
+      <div class="progress-item" style="align-items: flex-start; flex-direction: column; cursor:pointer;" onclick="toggleRecipeDetail('${r.id}')">
+        <div style="font-weight:600;">${r.titel}</div>
+        ${r.kopie_von && titelById[r.kopie_von] ? `<div class="muted" style="font-size:0.8rem;">Kopie von "${titelById[r.kopie_von]}"</div>` : ''}
+        ${r.zutaten ? `<div class="muted" style="margin-top:4px;">${r.zutaten}</div>` : ''}
+        <div id="recipe-detail-${r.id}" style="display:none; width:100%; margin-top:10px;" onclick="event.stopPropagation()"></div>
+      </div>
+    `).join('');
+  }
+
+  // ---- Detail aufklappen/zuklappen ----
+  function toggleRecipeDetail(id) {
+    const detailEl = document.getElementById(`recipe-detail-${id}`);
+    const isOpen = detailEl.style.display === 'block';
+    // alle anderen offenen Details schließen, damit die Liste übersichtlich bleibt
+    document.querySelectorAll('[id^="recipe-detail-"]').forEach(el => el.style.display = 'none');
+
+    if (isOpen) return; // war offen -> jetzt zu, fertig
+
+    const r = allRecipesCache.find(rec => rec.id === id);
+    const hatStrukturierteZutaten = r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0 && r.basis_portionen;
+    const nurPortionenOhneStruktur = r.basis_portionen && !hatStrukturierteZutaten;
+
+    detailEl.innerHTML = `
+      <div style="border-top:1px solid var(--border); padding-top:10px;">
+        <div style="font-size:0.88rem; font-weight:600;">Zutaten</div>
+        ${hatStrukturierteZutaten
+          ? `<div style="display:flex; align-items:center; gap:10px; margin:6px 0;">
+               <span class="muted" style="font-size:0.85rem;">Portionen:</span>
+               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', -1)">-</button>
+               <span id="portionen-anzeige-${id}" style="font-weight:600;">${r.basis_portionen}</span>
+               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', 1)">+</button>
+             </div>
+             <div class="muted" style="font-size:0.78rem; margin-bottom:4px;">Tipp: Du kannst auch direkt eine Zutaten-Menge unten ändern, um danach umzurechnen.</div>
+             <div id="zutaten-liste-${id}"></div>`
+          : `${nurPortionenOhneStruktur ? `<div class="muted" style="font-size:0.85rem; margin-bottom:4px;">Für ${r.basis_portionen} Portionen (keine automatische Mengenumrechnung, da Zutaten nicht strukturiert erfasst)</div>` : ''}
+             <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
+        <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Anleitung</div>
+        ${r.anleitung_schritte && r.anleitung_schritte.length > 0
+          ? `<ol style="padding-left:20px; margin:0 0 10px;">${r.anleitung_schritte.map(s => `<li style="margin-bottom:6px;">${s}</li>`).join('')}</ol>`
+          : `<div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>`}
+        <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
+        <div id="recipe-techniques-${id}" class="muted">Lade...</div>
+        ${r.quelle_url ? `<div style="margin-top:8px;"><a href="${r.quelle_url}" target="_blank" style="color: var(--accent); font-size:0.85rem;">Quelle öffnen</a></div>` : ''}
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="startEditAsCopy('${id}')">Bearbeiten (als Kopie)</button>
+          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer;" onclick="deleteRecipe('${id}')">Löschen</button>
         </div>
       </div>
+    `;
+    detailEl.style.display = 'block';
+    if (hatStrukturierteZutaten) {
+      aktuellePortionen[id] = r.basis_portionen;
+      renderZutatenListe(id);
+    }
+    loadRecipeTechniquesForDetail(id);
+  }
 
-      <h2>Einkaufsliste</h2>
-      <div id="item-list-offen"></div>
+  // ---- Portionen ändern und Zutatenliste neu berechnen ----
+  let aktuellePortionen = {};
 
-      <p>
-        <a href="#" id="toggle-gekauft-link" onclick="toggleGekauft(); return false;">Gekauft anzeigen (0)</a>
-      </p>
-      <ul id="item-list-gekauft" style="display:none;"></ul>
-    </div>
+  function changePortionen(id, delta) {
+    const neu = Math.max(1, (aktuellePortionen[id] || 1) + delta);
+    aktuellePortionen[id] = neu;
+    document.getElementById(`portionen-anzeige-${id}`).textContent = neu;
+    renderZutatenListe(id);
+  }
 
-    <div id="tab-einstellungen" class="tab-panel" style="display:none;">
-      <h2>Account</h2>
-      <p id="welcome"></p>
-      <button onclick="logout()">Logout</button>
+  function renderZutatenListe(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    const faktor = aktuellePortionen[id] / r.basis_portionen;
+    const listEl = document.getElementById(`zutaten-liste-${id}`);
 
-      <h2>Haushalt</h2>
-      <p>
-        <span id="household-name-display" class="item-name clickable" onclick="startEditHousehold()"></span>
-      </p>
-      <div id="household-edit-form" style="display:none;">
-        <input type="text" id="household-name-input">
-        <button onclick="saveHouseholdName()">Speichern</button>
-        <button onclick="cancelEditHousehold()">Abbrechen</button>
-      </div>
-      <p>Beitritts-Code: <strong id="household-join-code"></strong></p>
-      <img id="household-qr" alt="QR-Code zum Beitreten">
+    listEl.innerHTML = r.zutaten_strukturiert.map(z => {
+      if (z.menge === null || z.menge === undefined) {
+        return `<div class="kriterium"><span>${z.name}</span></div>`;
+      }
+      const neueMenge = z.menge * faktor;
+      // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
+      const anzeige = neueMenge < 10 ? Math.round(neueMenge * 10) / 10 : Math.round(neueMenge);
+      return `<div class="kriterium">
+        <span>${z.name}</span>
+        <span>
+          <input type="number" step="any" value="${anzeige}" data-basis="${z.menge}" data-id="${id}"
+            onchange="scaleByZutat(this)"
+            style="width:60px; padding:2px 4px; border-radius:4px; border:1px solid var(--border); text-align:right; font-family:inherit;">
+          ${z.einheit || ''}
+        </span>
+      </div>`;
+    }).join('');
+  }
 
-      <h2>Läden</h2>
-      <input type="text" id="store-name" placeholder="Neuer Laden (z.B. Aldi)">
-      <input type="text" id="store-address" placeholder="Adresse (optional)">
-      <button onclick="addStore()">Laden hinzufügen</button>
-      <p id="store-status"></p>
-      <ul id="store-list"></ul>
-    </div>
-  </div>
+  // ---- Skalierung über eine einzelne Zutat statt über Portionen (z. B. "hab nur 400g statt 500g") ----
+  function scaleByZutat(inputEl) {
+    const id = inputEl.dataset.id;
+    const basisMenge = parseFloat(inputEl.dataset.basis);
+    const neueMenge = parseFloat(inputEl.value);
+    if (!neueMenge || !basisMenge) return;
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    const SUPABASE_URL = "https://qanbxxbbngctucjbzfeb.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_mQWyeC7aCRJn29MuHTGG1Q_9ArG0_1J";
-    const client = supabase.createClient("https://qanbxxbbngctucjbzfeb.supabase.co", "sb_publishable_mQWyeC7aCRJn29MuHTGG1Q_9ArG0_1J");
+    const r = allRecipesCache.find(rec => rec.id === id);
+    const faktor = neueMenge / basisMenge;
+    aktuellePortionen[id] = Math.round(r.basis_portionen * faktor * 10) / 10;
+    document.getElementById(`portionen-anzeige-${id}`).textContent = aktuellePortionen[id];
+    renderZutatenListe(id);
+  }
 
-    let currentHouseholdId = null;
-    let editingItemId = null;
-    let allItems = [];
+  // ---- Verknüpfte Techniken für die Detailansicht laden ----
+  async function loadRecipeTechniquesForDetail(recipeId) {
+    const el = document.getElementById(`recipe-techniques-${recipeId}`);
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/recipe_techniques?select=techniques(name)&recipe_id=eq.${recipeId}`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const rows = await res.json();
+    const names = rows.map(r => r.techniques?.name).filter(Boolean);
+    el.textContent = names.length ? names.join(', ') : '(keine zugeordnet)';
+  }
 
-    const EINHEIT_LABELS = {
-      stueck: "Stück", gramm: "g", kilogramm: "kg",
-      liter: "l", milliliter: "ml", packung: "Packung"
+  // ---- Bearbeiten als Kopie: Formular befüllen ----
+  let editingCopyOf = null;
+
+  function startEditAsCopy(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
+
+    document.getElementById('recipe-titel-input').value = r.titel;
+    document.getElementById('recipe-portionen-input').value = r.basis_portionen || '';
+
+    clearZutatenRows();
+    if (r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0) {
+      r.zutaten_strukturiert.forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+    } else if (r.zutaten) {
+      r.zutaten.split("\n").filter(Boolean).forEach(z => addZutatRow('', '', z.trim()));
+    }
+    if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+    clearSchritteRows();
+    if (r.anleitung_schritte && r.anleitung_schritte.length > 0) {
+      r.anleitung_schritte.forEach(s => addSchrittRow(s));
+    } else if (r.anleitung) {
+      r.anleitung.split("\n").filter(Boolean).forEach(zeile => addSchrittRow(zeile.replace(/^\d+\.\s*/, '').trim()));
+    }
+    if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+
+    document.getElementById('edit-mode-original-title').textContent = r.titel;
+    document.getElementById('edit-mode-banner').style.display = 'block';
+
+    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function cancelEditCopy() {
+    editingCopyOf = null;
+    document.getElementById('edit-mode-banner').style.display = 'none';
+    document.getElementById('recipe-titel-input').value = '';
+    clearZutatenRows(); addZutatRow();
+    clearSchritteRows(); addSchrittRow();
+    document.getElementById('recipe-portionen-input').value = '';
+  }
+
+  // ---- Rezept löschen ----
+  async function deleteRecipe(id) {
+    if (!confirm('Dieses Rezept wirklich löschen? Zugehörige Techniken/dein Fortschritt bleiben erhalten.')) return;
+
+    await fetch(`${SUPABASE_URL}/rest/v1/recipes?id=eq.${id}`, {
+      method: "DELETE",
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    loadRecipes();
+  }
+
+  // ---- Techniken laden ----
+  async function loadTechniques() {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques?select=id,name,kurzbeschreibung,kernkriterien,typische_fehler,root_kategorie&order=name.asc`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    techniques = await res.json();
+    renderTechniqueOptions(techniques);
+  }
+
+  // ---- Wiederverwendbarer Steckbrief-Baustein (Reflexion + Fortschritt nutzen das gleiche) ----
+  function steckbriefHtml(technique) {
+    if (!technique) return '<div class="muted">Kein Steckbrief verfügbar.</div>';
+    return `
+      ${technique.root_kategorie ? `<div class="muted" style="font-size:0.8rem; margin-bottom:6px;">${technique.root_kategorie}</div>` : ''}
+      ${technique.kurzbeschreibung ? `<p style="margin:0 0 10px;">${technique.kurzbeschreibung}</p>` : ''}
+      ${technique.typische_fehler && technique.typische_fehler.length > 0
+        ? `<div style="font-size:0.85rem; font-weight:600; margin-bottom:4px;">Typische Fehler</div>
+           <div class="fehler-liste">${technique.typische_fehler.join(' ')}</div>`
+        : ''}
+    `;
+  }
+
+  // ---- Techniken-Dropdown befüllen (volle oder gefilterte Liste) ----
+  function renderTechniqueOptions(list) {
+    const select = document.getElementById('technique-select');
+    select.innerHTML = `<option value="">Automatisch erkennen lassen</option>` +
+      list.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  }
+
+  // ---- Titel-Feld nur relevant, wenn kein Rezept gewählt ist ----
+  function onTechniqueSelectChange() {
+    // aktuell nur Platzhalter für spätere Erweiterungen, Sichtbarkeit steuert onReflectRecipeChange
+  }
+
+  // ---- Rezepte für die Reflexions-Auswahl laden ----
+  async function loadRecipesForReflect() {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=id,titel&order=erstellt_am.desc`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+    });
+    const recipes = await res.json();
+    const select = document.getElementById('reflect-recipe-select');
+    const previousValue = select.value;
+    select.innerHTML = `<option value="">Kein Rezept / freie Auswahl</option>` +
+      recipes.map(r => `<option value="${r.id}">${r.titel}</option>`).join('');
+    select.value = previousValue;
+  }
+
+  // ---- Bei Rezept-Auswahl: nur noch Titel-Feld ein-/ausblenden (Filterung entfällt, wird zum Kontext-Hinweis für K2) ----
+  function onReflectRecipeChange() {
+    const recipeId = document.getElementById('reflect-recipe-select').value;
+    currentReflectRecipeId = recipeId || null;
+
+    // Titel-Feld nur relevant, wenn kein Rezept gewählt ist (K4: Auto-Anlage eines Rezepts)
+    document.getElementById('auto-titel-wrapper').style.display = recipeId ? 'none' : 'block';
+  }
+
+  // ---- Auto-Erkennungs-Zustand (K2-K4) ----
+  let autoQueue = [];
+  let autoQueueIndex = 0;
+  let autoRecipeId = null;
+  let autoBeschreibung = "";
+  let autoVorschlag = null;
+
+  // ---- Hilfsfunktion: ein reflect-technique-Aufruf ----
+  async function callReflectTechnique(technique_id, beschreibung_text, reflection_id, recipe_id) {
+    const body = { technique_id, modus: "voll", beschreibung_text };
+    if (reflection_id) body.reflection_id = reflection_id;
+    if (!reflection_id && recipe_id) body.recipe_id = recipe_id;
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/reflect-technique`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  }
+
+  // ---- Reflexion absenden (Rückfrage-Runde, explizite Technik, oder Auto-Erkennung starten) ----
+  async function submitReflection() {
+    const beschreibungInput = document.getElementById('beschreibung').value.trim();
+    if (!beschreibungInput) return;
+
+    const btn = document.getElementById('submit-btn');
+    const statusLine = document.getElementById('status-line');
+    btn.disabled = true;
+
+    try {
+      // Fall 1: laufende Rückfrage-Runde (egal ob manuell oder Teil der Auto-Queue)
+      if (currentReflectionId) {
+        statusLine.textContent = "Wird ausgewertet...";
+        const data = await callReflectTechnique(currentTechniqueId, beschreibungInput, currentReflectionId, null);
+        if (data.error) { statusLine.textContent = "Fehler: " + data.error; btn.disabled = false; return; }
+        document.getElementById('beschreibung').value = "";
+
+        if (!data.abgeschlossen) {
+          currentReflectionId = data.reflection_id;
+          renderResult(data.ergebnis_dieser_runde, false);
+          statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+        } else {
+          renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+          currentReflectionId = null;
+          if (autoQueue.length > 0) { await advanceAutoQueue(statusLine); }
+          else { statusLine.textContent = "Reflexion abgeschlossen."; }
+        }
+        btn.disabled = false;
+        return;
+      }
+
+      // Fall 2: explizite Technik gewählt -> Auto-Modus umgehen, normaler Einzel-Ablauf
+      const gewaehlteTechnik = document.getElementById('technique-select').value;
+      if (gewaehlteTechnik) {
+        statusLine.textContent = "Wird ausgewertet...";
+        const data = await callReflectTechnique(gewaehlteTechnik, beschreibungInput, null, currentReflectRecipeId);
+        if (data.error) { statusLine.textContent = "Fehler: " + data.error; btn.disabled = false; return; }
+        currentTechniqueId = gewaehlteTechnik;
+        document.getElementById('beschreibung').value = "";
+
+        if (!data.abgeschlossen) {
+          currentReflectionId = data.reflection_id;
+          renderResult(data.ergebnis_dieser_runde, false);
+          statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+        } else {
+          renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+          statusLine.textContent = "Reflexion abgeschlossen.";
+        }
+        btn.disabled = false;
+        return;
+      }
+
+      // Fall 3: Auto-Erkennung starten (K2)
+      statusLine.textContent = "Erkenne Techniken...";
+      document.getElementById('auto-detect-info').textContent = "";
+      document.getElementById('reflect-vorschlag-card').innerHTML = "";
+
+      const detectRes = await fetch(`${SUPABASE_URL}/functions/v1/detect-techniques-reflection`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ beschreibung_text: beschreibungInput, recipe_id: currentReflectRecipeId || undefined })
+      });
+      const detectData = await detectRes.json();
+
+      if (detectData.error) { statusLine.textContent = "Fehler: " + detectData.error; btn.disabled = false; return; }
+      if (!detectData.erkannte_technik_ids || detectData.erkannte_technik_ids.length === 0) {
+        statusLine.textContent = "Keine bekannte Technik erkannt. Du kannst oben auch manuell eine Technik wählen.";
+        btn.disabled = false;
+        return;
+      }
+
+      autoQueue = detectData.erkannte_technik_ids;
+      autoQueueIndex = 0;
+      autoBeschreibung = beschreibungInput;
+      autoVorschlag = detectData.neue_technik_vorschlag || null;
+
+      // Rezept bestimmen: gewähltes nehmen, oder neu anlegen (K4)
+      if (currentReflectRecipeId) {
+        autoRecipeId = currentReflectRecipeId;
+      } else {
+        const titelInput = document.getElementById('auto-titel-input').value.trim();
+        const titel = titelInput || `Spontan gekocht - ${new Date().toLocaleDateString('de-DE')}`;
+        const recipeRes = await fetch(`${SUPABASE_URL}/rest/v1/recipes`, {
+          method: "POST",
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+          body: JSON.stringify({ titel, anleitung: beschreibungInput, zutaten: null })
+        });
+        const [neuesRezept] = await recipeRes.json();
+        autoRecipeId = neuesRezept.id;
+        currentReflectRecipeId = autoRecipeId;
+        loadRecipesForReflect();
+      }
+
+      // Erkannte Techniken mit dem Rezept verknüpfen (nur die, die noch fehlen)
+      const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques?select=technique_id&recipe_id=eq.${autoRecipeId}`, {
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+      });
+      const existingIds = new Set((await existingRes.json()).map(r => r.technique_id));
+      const neueVerknuepfungen = autoQueue.filter(id => !existingIds.has(id)).map(id => ({ recipe_id: autoRecipeId, technique_id: id }));
+      if (neueVerknuepfungen.length > 0) {
+        await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
+          method: "POST",
+          headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify(neueVerknuepfungen)
+        });
+      }
+
+      document.getElementById('beschreibung').value = "";
+      await startQueueItem(statusLine);
+    } catch (e) {
+      statusLine.textContent = "Verbindungsfehler: " + e.message;
+    }
+    btn.disabled = false;
+  }
+
+  // ---- Aktuelles Element der Auto-Queue starten ----
+  async function startQueueItem(statusLine) {
+    const techId = autoQueue[autoQueueIndex];
+    const techName = techniques.find(t => t.id === techId)?.name || techId;
+    document.getElementById('auto-detect-info').textContent = `Technik ${autoQueueIndex + 1} von ${autoQueue.length}: ${techName}`;
+    statusLine.textContent = "Wird ausgewertet...";
+
+    currentTechniqueId = techId;
+    const data = await callReflectTechnique(techId, autoBeschreibung, null, autoRecipeId);
+    if (data.error) { statusLine.textContent = "Fehler: " + data.error; return; }
+
+    if (!data.abgeschlossen) {
+      currentReflectionId = data.reflection_id;
+      renderResult(data.ergebnis_dieser_runde, false);
+      statusLine.textContent = "Bitte beantworte die Rückfrage unten.";
+    } else {
+      currentReflectionId = null;
+      renderResult(data.finaler_output, true, data.ergebnis, data.progress);
+      await advanceAutoQueue(statusLine);
+    }
+  }
+
+  // ---- Nach Abschluss einer Technik: nächste starten, oder fertig ----
+  async function advanceAutoQueue(statusLine) {
+    autoQueueIndex++;
+    if (autoQueueIndex < autoQueue.length) {
+      await startQueueItem(statusLine);
+    } else {
+      document.getElementById('auto-detect-info').textContent = `Alle ${autoQueue.length} erkannten Techniken reflektiert.`;
+      statusLine.textContent = "Fertig!";
+      if (autoVorschlag) {
+        renderNeueTechnikVorschlag(autoVorschlag, autoRecipeId, 'reflect-vorschlag-card');
+      }
+      loadRecipes();
+      autoQueue = [];
+      autoQueueIndex = 0;
+      autoRecipeId = null;
+      autoVorschlag = null;
+    }
+  }
+
+  // ---- Ergebnis darstellen ----
+  let renderResultKriterienListe = [];
+  let quickAntworten = {};
+
+  function renderResult(output, abgeschlossen, ergebnis, progress) {
+    const card = document.getElementById('result-card');
+    let html = `<div class="card">`;
+    renderResultKriterienListe = output.kriterien_bewertung || [];
+    quickAntworten = {};
+
+    const aktuelleTechnik = techniques.find(t => t.id === currentTechniqueId);
+    if (aktuelleTechnik) {
+      html += `
+        <div style="margin-bottom:10px;">
+          <a href="#" onclick="event.preventDefault(); toggleSteckbriefInfo();" style="color: var(--accent); font-size:0.85rem;">ℹ️ Warum diese Kriterien?</a>
+          <div id="steckbrief-info-box" style="display:none; margin-top:8px; padding:10px 12px; background: var(--bg); border-radius:8px;">
+            ${steckbriefHtml(aktuelleTechnik)}
+          </div>
+        </div>
+      `;
+    }
+
+    if (output.kriterien_bewertung && output.kriterien_bewertung.length > 0) {
+      html += output.kriterien_bewertung.map((k, idx) => {
+        const zeigtButtons = !abgeschlossen && k.status === 'unklar';
+        return `
+        <div class="kriterium" style="${zeigtButtons ? 'flex-direction:column; align-items:flex-start; gap:6px;' : ''}">
+          <span>${k.kriterium}</span>
+          ${zeigtButtons
+            ? `<div style="display:flex; gap:6px;">
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'ja', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Ja</button>
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'nein', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Nein</button>
+                 <button type="button" onclick="setQuickAntwort(${idx}, 'unsicher', this)" style="width:auto; padding:4px 12px; font-size:0.85rem; border-radius:6px; border:1px solid var(--border); background:none; cursor:pointer;">Weiß nicht</button>
+               </div>`
+            : `<span class="badge ${k.status}">${k.status.replace('_', ' ')}</span>`}
+        </div>
+      `;
+      }).join('');
+    }
+
+    if (output.fehler_erkannt && output.fehler_erkannt.length > 0) {
+      html += `<div class="fehler-liste"><strong>Beobachtung:</strong> ${output.fehler_erkannt.join(' ')}</div>`;
+    }
+
+    if (output.gesamteinschaetzung) {
+      html += `<p style="margin-top:14px;">${output.gesamteinschaetzung}</p>`;
+    }
+
+    if (!abgeschlossen && output.rueckfrage) {
+      html += `<div class="rueckfrage-box"><strong>Rückfrage:</strong> ${output.rueckfrage}</div>`;
+    }
+
+    if (!abgeschlossen && output.kriterien_bewertung?.some(k => k.status === 'unklar')) {
+      html += `
+        <div style="margin-top:10px;">
+          <textarea id="quick-antwort-notiz" placeholder="Weitere Anmerkungen (optional)" style="min-height:60px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit;"></textarea>
+          <button class="primary" style="margin-top:8px;" onclick="submitQuickAntworten()">Antwort senden</button>
+        </div>
+      `;
+    }
+
+    if (abgeschlossen) {
+      const labels = {
+        sauber_bestaetigt: "✅ Sauber bestätigt",
+        unklar_geblieben: "❔ Unklar geblieben",
+        fehler_erkannt: "⚠️ Fehler erkannt",
+        technischer_fehler: "⚠️ Technischer Fehler"
+      };
+      html += `<p style="margin-top:14px; font-weight:600;">${labels[ergebnis] || ergebnis}</p>`;
+      if (progress) {
+        html += `<p class="muted">Level ${progress.level} · ${progress.sauber_bestaetigt_count}x sauber bestätigt · ${progress.angewendet_count}x angewendet</p>`;
+      }
+    }
+
+    html += `</div>`;
+    card.innerHTML = html;
+  }
+
+  // ---- Steckbrief-Info in der Reflexion auf-/zuklappen ----
+  function toggleSteckbriefInfo() {
+    const box = document.getElementById('steckbrief-info-box');
+    if (box) box.style.display = box.style.display === 'block' ? 'none' : 'block';
+  }
+
+  // ---- Ja/Nein/Weiß-nicht-Auswahl merken, Button optisch hervorheben ----
+  function setQuickAntwort(idx, wert, btnEl) {
+    const kriteriumText = renderResultKriterienListe[idx]?.kriterium;
+    if (!kriteriumText) return;
+    quickAntworten[idx] = { text: kriteriumText, wert };
+
+    btnEl.parentElement.querySelectorAll('button').forEach(b => {
+      b.style.background = 'none';
+      b.style.color = 'var(--ink)';
+      b.style.borderColor = 'var(--border)';
+    });
+    btnEl.style.background = 'var(--accent)';
+    btnEl.style.color = 'white';
+    btnEl.style.borderColor = 'var(--accent)';
+  }
+
+  // ---- Aus den Ja/Nein-Antworten einen Antworttext zusammensetzen und absenden ----
+  function submitQuickAntworten() {
+    const praefix = { ja: 'Ja', nein: 'Nein', unsicher: 'Unsicher' };
+    const zeilen = Object.values(quickAntworten).map(a => `${praefix[a.wert]}: ${a.text}`);
+
+    const notizEl = document.getElementById('quick-antwort-notiz');
+    const notiz = notizEl ? notizEl.value.trim() : '';
+    if (notiz) zeilen.push(notiz);
+
+    if (zeilen.length === 0) return; // nichts ausgewählt und keine Notiz -> nichts zu senden
+
+    document.getElementById('beschreibung').value = zeilen.join('\n');
+    submitReflection();
+  }
+
+  // ---- Fortschritt laden ----
+  let progressCache = [];
+
+  async function loadProgress() {
+    const listEl = document.getElementById('progress-list');
+    listEl.innerHTML = `<div class="muted">Lade Fortschritt...</div>`;
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/techniques?select=id,name,kurzbeschreibung,kernkriterien,typische_fehler,root_kategorie,technique_progress(level,angewendet_count,sauber_bestaetigt_count)&order=name.asc`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const data = await res.json();
+    progressCache = data;
+
+    listEl.innerHTML = data.map((t, idx) => {
+      const p = (t.technique_progress && t.technique_progress[0]) || { level: 0, angewendet_count: 0, sauber_bestaetigt_count: 0 };
+      const dots = [0, 1, 2, 3].map(i => `<span class="dot ${i <= p.level ? 'filled' : ''}"></span>`).join('');
+      return `
+        <div class="progress-item" style="align-items:flex-start; flex-direction:column; cursor:pointer;" onclick="toggleProgressDetail(${idx})">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <div>
+              <div>${t.name}</div>
+              <div class="muted">${p.sauber_bestaetigt_count}x sauber bestätigt · ${p.angewendet_count}x angewendet</div>
+            </div>
+            <div class="level-dots">${dots}</div>
+          </div>
+          <div id="progress-detail-${idx}" style="display:none; width:100%; margin-top:10px;"></div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function toggleProgressDetail(idx) {
+    const el = document.getElementById(`progress-detail-${idx}`);
+    const isOpen = el.style.display === 'block';
+    document.querySelectorAll('[id^="progress-detail-"]').forEach(e => e.style.display = 'none');
+    if (isOpen) return;
+    el.innerHTML = `<div style="border-top:1px solid var(--border); padding-top:10px;">${steckbriefHtml(progressCache[idx])}</div>`;
+    el.style.display = 'block';
+  }
+
+  // ---- Verlauf: alle abgeschlossenen Reflexionen chronologisch ----
+  let historyCache = [];
+
+  async function loadHistory() {
+    const listEl = document.getElementById('history-list');
+    listEl.innerHTML = `<div class="muted">Lade Verlauf...</div>`;
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/reflections?select=id,ergebnis,finaler_output,erstellt_am,techniques(name),recipes(titel)&finaler_output=not.is.null&order=erstellt_am.desc&limit=50`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const data = await res.json();
+    historyCache = data;
+
+    if (!data.length) {
+      listEl.innerHTML = `<div class="muted">Noch keine abgeschlossenen Reflexionen.</div>`;
+      return;
+    }
+
+    const labels = {
+      sauber_bestaetigt: "✅ Sauber bestätigt",
+      unklar_geblieben: "❔ Unklar geblieben",
+      fehler_erkannt: "⚠️ Fehler erkannt",
+      technischer_fehler: "⚠️ Technischer Fehler"
     };
 
-    let authMode = 'login';
-    let currentSession = null;
-
-    function toggleAuthMode() {
-      authMode = authMode === 'login' ? 'register' : 'login';
-      document.getElementById('auth-submit-btn').textContent = authMode === 'login' ? 'Login' : 'Registrieren';
-      document.getElementById('auth-mode-toggle').textContent = authMode === 'login'
-        ? 'Noch keinen Account? Registrieren'
-        : 'Schon registriert? Login';
-      document.getElementById('login-status').textContent = '';
-    }
-
-    async function submitAuth() {
-      const email = document.getElementById('email').value;
-      const password = document.getElementById('password').value;
-      const statusEl = document.getElementById('login-status');
-
-      if (authMode === 'login') {
-        const { error } = await client.auth.signInWithPassword({ email, password });
-        statusEl.textContent = error ? "Fehler: " + error.message : "";
-      } else {
-        const { error } = await client.auth.signUp({ email, password });
-        statusEl.textContent = error ? "Fehler: " + error.message : "Konto erstellt!";
-      }
-    }
-
-    async function logout() {
-      await client.auth.signOut();
-    }
-
-    async function loadHouseholdId(userId) {
-      const { data, error } = await client
-        .from('household_members')
-        .select('household_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (error) {
-        console.error("Konnte household_id nicht laden:", error);
-        return null;
-      }
-      return data ? data.household_id : null;
-    }
-
-    let storesById = {};
-    let allStores = [];
-    let editingStoreId = null;
-
-    async function loadStores() {
-      const { data, error } = await client
-        .from('stores')
-        .select('*')
-        .order('name');
-
-      if (error) {
-        console.error("Fehler beim Laden der Läden:", error);
-        return;
-      }
-
-      allStores = data;
-      storesById = {};
-      data.forEach(store => { storesById[store.id] = store.name; });
-
-      renderStoreList();
-
-      const selectEl = document.getElementById('item-store');
-      const bisherigeAuswahl = selectEl.value;
-      selectEl.innerHTML = '<option value="">– kein Laden –</option>' +
-        data.map(store => `<option value="${store.id}">${store.name}</option>`).join('');
-      selectEl.value = bisherigeAuswahl;
-
-      loadItems();
-    }
-
-    function renderStoreList() {
-      document.getElementById('store-list').innerHTML = allStores.map(renderStoreItem).join('');
-    }
-
-    function renderStoreItem(store) {
-      if (store.id === editingStoreId) {
-        return `
-          <li class="editing">
-            <input type="text" id="edit-store-name-${store.id}" value="${escapeHtml(store.name)}" placeholder="Name">
-            <input type="text" id="edit-store-address-${store.id}" value="${escapeHtml(store.address || '')}" placeholder="Adresse (optional)">
-            <div class="edit-actions">
-              <button onclick="saveEditStore('${store.id}')">Speichern</button>
-              <button onclick="cancelEditStore()">Abbrechen</button>
-            </div>
-          </li>
-        `;
-      }
+    listEl.innerHTML = data.map((r, i) => {
+      const datum = new Date(r.erstellt_am).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
       return `
-        <li>
-          <span class="item-name clickable" onclick="startEditStore('${store.id}')">
-            ${store.name}
-            ${store.address ? `<br><small class="store-address">${store.address}</small>` : ''}
-          </span>
-          <button onclick="deleteStore('${store.id}')">löschen</button>
-        </li>
+        <div class="progress-item" style="align-items:flex-start; flex-direction:column; cursor:pointer;" onclick="toggleHistoryDetail(${i})">
+          <div style="display:flex; justify-content:space-between; width:100%;">
+            <div style="font-weight:600;">${r.techniques?.name || '(gelöschte Technik)'}</div>
+            <div class="muted" style="font-size:0.8rem;">${datum}</div>
+          </div>
+          ${r.recipes?.titel ? `<div class="muted" style="font-size:0.85rem;">${r.recipes.titel}</div>` : ''}
+          <div style="font-size:0.85rem; margin-top:4px;">${labels[r.ergebnis] || r.ergebnis || ''}</div>
+          <div id="history-detail-${i}" style="display:none; width:100%; margin-top:10px;"></div>
+        </div>
       `;
-    }
+    }).join('');
+  }
 
-    function startEditStore(id) {
-      editingStoreId = id;
-      renderStoreList();
-    }
+  function toggleHistoryDetail(i) {
+    const el = document.getElementById(`history-detail-${i}`);
+    const isOpen = el.style.display === 'block';
+    document.querySelectorAll('[id^="history-detail-"]').forEach(e => e.style.display = 'none');
+    if (isOpen) return;
 
-    function cancelEditStore() {
-      editingStoreId = null;
-      renderStoreList();
-    }
-
-    async function saveEditStore(id) {
-      const nameEl = document.getElementById('edit-store-name-' + id);
-      const addressEl = document.getElementById('edit-store-address-' + id);
-      const name = nameEl.value.trim();
-      const address = addressEl.value.trim();
-      if (!name) return;
-
-      const { error } = await client
-        .from('stores')
-        .update({ name: name, address: address || null })
-        .eq('id', id);
-
-      if (error) {
-        console.error("Fehler beim Speichern:", error);
-        return;
-      }
-      editingStoreId = null;
-      loadStores();
-    }
-
-    async function deleteStore(id) {
-      const laden = storesById[id] || "diesen Laden";
-      if (!confirm(`"${laden}" wirklich löschen? Zugeordnete Artikel verlieren dann ihre Laden-Zuordnung.`)) {
-        return;
-      }
-      const { error } = await client.from('stores').delete().eq('id', id);
-      if (error) {
-        console.error("Fehler beim Löschen:", error);
-        return;
-      }
-      loadStores();
-    }
-
-    async function addStore() {
-      const nameEl = document.getElementById('store-name');
-      const addressEl = document.getElementById('store-address');
-      const name = nameEl.value.trim();
-      const address = addressEl.value.trim();
-      const statusEl = document.getElementById('store-status');
-
-      if (!name) {
-        statusEl.textContent = "Bitte einen Namen eingeben.";
-        return;
-      }
-
-      const { error } = await client.from('stores').insert({
-        household_id: currentHouseholdId,
-        name: name,
-        address: address || null
-      });
-
-      if (error) {
-        statusEl.textContent = "Fehler: " + error.message;
-      } else {
-        statusEl.textContent = "\"" + name + "\" hinzugefügt!";
-        nameEl.value = "";
-        addressEl.value = "";
-        loadStores();
-      }
-    }
-
-    function showTab(tab) {
-      document.getElementById('tab-liste').style.display = tab === 'liste' ? 'block' : 'none';
-      document.getElementById('tab-einstellungen').style.display = tab === 'einstellungen' ? 'block' : 'none';
-      document.getElementById('tab-btn-liste').classList.toggle('active', tab === 'liste');
-      document.getElementById('tab-btn-einstellungen').classList.toggle('active', tab === 'einstellungen');
-    }
-
-    async function showApp(session) {
-      document.getElementById('login-view').style.display = 'none';
-      document.getElementById('onboarding-view').style.display = 'none';
-      document.getElementById('app-view').style.display = 'block';
-      document.getElementById('welcome').textContent = "Eingeloggt als " + session.user.email;
-      showTab('liste');
-      loadStores();
-      loadHousehold();
-      subscribeToChanges();
-    }
-
-    function showOnboarding() {
-      document.getElementById('login-view').style.display = 'none';
-      document.getElementById('app-view').style.display = 'none';
-      document.getElementById('onboarding-view').style.display = 'block';
-    }
-
-    function subscribeToChanges() {
-      client
-        .channel('shopping_items_changes')
-        .on('postgres_changes',
-          { event: '*', schema: 'public', table: 'shopping_items', filter: `household_id=eq.${currentHouseholdId}` },
-          () => { loadItems(); }
-        )
-        .subscribe();
-    }
-
-    function showLogin() {
-      document.getElementById('login-view').style.display = 'block';
-      document.getElementById('onboarding-view').style.display = 'none';
-      document.getElementById('app-view').style.display = 'none';
-    }
-
-    client.auth.onAuthStateChange(async (event, session) => {
-      currentSession = session;
-      if (session) {
-        currentHouseholdId = await loadHouseholdId(session.user.id);
-        if (currentHouseholdId) {
-          showApp(session);
-        } else {
-          showOnboarding();
-        }
-      } else {
-        showLogin();
-      }
-    });
-
-    async function createHousehold() {
-      const nameEl = document.getElementById('new-household-name');
-      const name = nameEl.value.trim();
-      const statusEl = document.getElementById('create-household-status');
-
-      if (!name) {
-        statusEl.textContent = "Bitte einen Namen eingeben.";
-        return;
-      }
-
-      const { data, error } = await client.rpc('create_household', { household_name: name });
-
-      if (error) {
-        statusEl.textContent = "Fehler: " + error.message;
-        return;
-      }
-
-      currentHouseholdId = data[0].id;
-      showApp(currentSession);
-    }
-
-    async function joinHousehold() {
-      const codeEl = document.getElementById('join-code-input');
-      const code = codeEl.value.trim();
-      const statusEl = document.getElementById('join-household-status');
-
-      if (!code) {
-        statusEl.textContent = "Bitte einen Code eingeben.";
-        return;
-      }
-
-      const { data, error } = await client.rpc('join_household_by_code', { code: code });
-
-      if (error) {
-        statusEl.textContent = "Fehler: " + error.message;
-        return;
-      }
-
-      currentHouseholdId = data;
-      showApp(currentSession);
-    }
-
-    let currentHousehold = null;
-
-    async function loadHousehold() {
-      const { data, error } = await client
-        .from('households')
-        .select('*')
-        .eq('id', currentHouseholdId)
-        .single();
-
-      if (error) {
-        console.error("Fehler beim Laden des Haushalts:", error);
-        return;
-      }
-
-      currentHousehold = data;
-      renderHousehold();
-    }
-
-    function renderHousehold() {
-      document.getElementById('household-name-display').textContent = currentHousehold.name;
-      document.getElementById('household-join-code').textContent = currentHousehold.join_code;
-      document.getElementById('household-qr').src =
-        `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentHousehold.join_code)}`;
-    }
-
-    function startEditHousehold() {
-      document.getElementById('household-name-input').value = currentHousehold.name;
-      document.getElementById('household-edit-form').style.display = 'block';
-    }
-
-    function cancelEditHousehold() {
-      document.getElementById('household-edit-form').style.display = 'none';
-    }
-
-    async function saveHouseholdName() {
-      const name = document.getElementById('household-name-input').value.trim();
-      if (!name) return;
-
-      const { error } = await client.from('households').update({ name: name }).eq('id', currentHouseholdId);
-      if (error) {
-        console.error("Fehler beim Speichern:", error);
-        return;
-      }
-      document.getElementById('household-edit-form').style.display = 'none';
-      loadHousehold();
-    }
-
-    async function addItem() {
-      const name = document.getElementById('item-name').value.trim();
-      const menge = document.getElementById('item-menge').value;
-      const einheit = document.getElementById('item-einheit').value;
-      const storeId = document.getElementById('item-store').value;
-      const statusEl = document.getElementById('add-status');
-
-      if (!name) {
-        statusEl.textContent = "Bitte einen Namen eingeben.";
-        return;
-      }
-
-      const { data: { user } } = await client.auth.getUser();
-
-      const { error } = await client.from('shopping_items').insert({
-        household_id: currentHouseholdId,
-        name: name,
-        menge: menge ? parseFloat(menge) : null,
-        einheit: einheit,
-        store_id: storeId || null,
-        created_by: user.id
-      });
-
-      if (error) {
-        statusEl.textContent = "Fehler: " + error.message;
-      } else {
-        statusEl.textContent = "\"" + name + "\" hinzugefügt!";
-        document.getElementById('item-name').value = "";
-        document.getElementById('item-menge').value = "";
-      }
-    }
-
-    function toggleAddForm() {
-      const formEl = document.getElementById('add-form');
-      const istOffen = formEl.style.display !== 'none';
-      formEl.style.display = istOffen ? 'none' : 'block';
-      document.getElementById('toggle-add-link').textContent = istOffen ? "+ Artikel hinzufügen" : "– Formular schließen";
-    }
-
-    let showGekauft = false;
-
-    function toggleGekauft() {
-      showGekauft = !showGekauft;
-      document.getElementById('item-list-gekauft').style.display = showGekauft ? 'block' : 'none';
-      updateToggleLabel();
-    }
-
-    function updateToggleLabel() {
-      const count = document.getElementById('item-list-gekauft').children.length;
-      const link = document.getElementById('toggle-gekauft-link');
-      link.textContent = (showGekauft ? "Gekauft ausblenden (" : "Gekauft anzeigen (") + count + ")";
-    }
-
-    function escapeHtml(str) {
-      return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    function einheitOptions(selected) {
-      return Object.entries(EINHEIT_LABELS).map(([val, label]) =>
-        `<option value="${val}" ${val === selected ? 'selected' : ''}>${label}</option>`
-      ).join('');
-    }
-
-    function storeOptions(selectedId) {
-      const leer = `<option value="">– kein Laden –</option>`;
-      const optionen = Object.entries(storesById).map(([id, name]) =>
-        `<option value="${id}" ${id === selectedId ? 'selected' : ''}>${name}</option>`
-      ).join('');
-      return leer + optionen;
-    }
-
-    function startEdit(id) {
-      editingItemId = id;
-      render();
-    }
-
-    function cancelEdit() {
-      editingItemId = null;
-      render();
-    }
-
-    async function saveEdit(id) {
-      const name = document.getElementById('edit-name-' + id).value.trim();
-      const menge = document.getElementById('edit-menge-' + id).value;
-      const einheit = document.getElementById('edit-einheit-' + id).value;
-      const storeId = document.getElementById('edit-store-' + id).value;
-
-      if (!name) return;
-
-      const { error } = await client
-        .from('shopping_items')
-        .update({
-          name: name,
-          menge: menge ? parseFloat(menge) : null,
-          einheit: einheit,
-          store_id: storeId || null
-        })
-        .eq('id', id);
-
-      if (error) {
-        console.error("Fehler beim Speichern:", error);
-        return;
-      }
-      editingItemId = null;
-    }
-
-    function renderItem(item) {
-      if (item.id === editingItemId) {
-        return `
-          <li class="editing">
-            <input type="text" id="edit-name-${item.id}" value="${escapeHtml(item.name)}">
-            <input type="number" id="edit-menge-${item.id}" value="${item.menge ?? ''}" step="0.1" placeholder="Menge">
-            <select id="edit-einheit-${item.id}">${einheitOptions(item.einheit)}</select>
-            <select id="edit-store-${item.id}">${storeOptions(item.store_id)}</select>
-            <div class="edit-actions">
-              <button onclick="saveEdit('${item.id}')">Speichern</button>
-              <button onclick="cancelEdit()">Abbrechen</button>
-            </div>
-          </li>
-        `;
-      }
-
-      const editable = item.status === 'offen';
-      const nameClass = editable ? 'item-name clickable' : 'item-name';
-      const nameClick = editable ? ` onclick="startEdit('${item.id}')"` : '';
-
-      return `
-        <li style="${item.status === 'gekauft' ? 'text-decoration: line-through; color: gray;' : ''}">
-          <input type="checkbox" ${item.status === 'gekauft' ? 'checked' : ''}
-                 onchange="toggleStatus('${item.id}', this.checked)">
-          <span class="${nameClass}"${nameClick}>
-            ${item.name}
-            ${item.menge ? ` – ${item.menge} ${EINHEIT_LABELS[item.einheit] || item.einheit}` : ''}
-          </span>
-          <button onclick="deleteItem('${item.id}')">löschen</button>
-        </li>
-      `;
-    }
-
-    function renderGroupedByStore(items) {
-      const ohneLaden = "Ohne Laden";
-      const gruppen = {};
-      items.forEach(item => {
-        const ladenName = item.store_id ? (storesById[item.store_id] || "Unbekannter Laden") : ohneLaden;
-        if (!gruppen[ladenName]) gruppen[ladenName] = [];
-        gruppen[ladenName].push(item);
-      });
-
-      const ladenNamen = Object.keys(gruppen).sort((a, b) => {
-        if (a === ohneLaden) return 1;
-        if (b === ohneLaden) return -1;
-        return a.localeCompare(b);
-      });
-
-      return ladenNamen.map(ladenName => `
-        <h3>${ladenName}</h3>
-        <ul>${gruppen[ladenName].map(renderItem).join('')}</ul>
+    const output = historyCache[i].finaler_output;
+    let html = `<div style="border-top:1px solid var(--border); padding-top:10px;">`;
+    if (output.kriterien_bewertung && output.kriterien_bewertung.length > 0) {
+      html += output.kriterien_bewertung.map(k => `
+        <div class="kriterium"><span>${k.kriterium}</span><span class="badge ${k.status}">${k.status.replace('_',' ')}</span></div>
       `).join('');
     }
-
-    async function loadItems() {
-      const { data, error } = await client
-        .from('shopping_items')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Fehler beim Laden:", error);
-        return;
-      }
-
-      allItems = data;
-      render();
+    if (output.fehler_erkannt && output.fehler_erkannt.length > 0) {
+      html += `<div class="fehler-liste">${output.fehler_erkannt.join(' ')}</div>`;
     }
-
-    function render() {
-      const offen = allItems.filter(item => item.status === 'offen');
-      const gekauft = allItems.filter(item => item.status === 'gekauft');
-
-      document.getElementById('item-list-offen').innerHTML = renderGroupedByStore(offen);
-      document.getElementById('item-list-gekauft').innerHTML = gekauft.map(renderItem).join('');
-
-      updateToggleLabel();
+    if (output.gesamteinschaetzung) {
+      html += `<p style="margin-top:10px; font-size:0.9rem;">${output.gesamteinschaetzung}</p>`;
     }
+    html += `</div>`;
+    el.innerHTML = html;
+    el.style.display = 'block';
+  }
 
-    async function toggleStatus(id, isChecked) {
-      const neuerStatus = isChecked ? 'gekauft' : 'offen';
-      const { error } = await client
-        .from('shopping_items')
-        .update({ status: neuerStatus })
-        .eq('id', id);
+  loadTechniques();
+  addZutatRow();
+  addSchrittRow();
 
-      if (error) console.error("Fehler beim Ändern:", error);
+  // ---- Geteilte URL empfangen (Web Share Target API) ----
+  (function handleSharedUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const geteilteUrl = params.get('shared_url') || params.get('shared_text') || '';
+    // manche Apps legen den Link in "text" statt "url" ab - grob nach http(s) suchen
+    const urlMatch = geteilteUrl.match(/https?:\/\/\S+/);
+    if (urlMatch) {
+      showTab('recipes');
+      document.getElementById('import-url-input').value = urlMatch[0];
+      // kurze Verzögerung, damit die Rezepte-Ansicht sicher aufgebaut ist
+      setTimeout(() => importRecipeFromUrl(), 300);
+      // URL-Parameter aus der Adresszeile entfernen, damit ein Neuladen nicht erneut importiert
+      window.history.replaceState({}, '', window.location.pathname);
     }
-
-    async function deleteItem(id) {
-      const { error } = await client
-        .from('shopping_items')
-        .delete()
-        .eq('id', id);
-
-      if (error) console.error("Fehler beim Löschen:", error);
-    }
-  </script>
+  })();
+</script>
 </body>
 </html>
