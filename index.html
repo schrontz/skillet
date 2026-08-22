@@ -81,6 +81,7 @@
     <button id="tab-recipes" onclick="showTab('recipes')">Rezepte</button>
     <button id="tab-progress" onclick="showTab('progress')">Fortschritt</button>
     <button id="tab-history" onclick="showTab('history')">Verlauf</button>
+    <button id="tab-kochen" onclick="showTab('kochen')">Kochen</button>
   </nav>
 
   <!-- REFLECT VIEW -->
@@ -180,12 +181,32 @@
       <div class="muted">Lade Verlauf...</div>
     </div>
   </div>
+
+  <!-- KOCHMODUS START VIEW -->
+  <div id="view-kochen" style="display:none;">
+    <div class="card" id="kochmodus-start">
+      <div style="margin-bottom:10px; font-weight:600;">Nach Rezept kochen?</div>
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button onclick="kochmodusMitRezept(true)" style="width:auto; flex:1; padding:10px; border-radius:8px; border:1px solid var(--border); background:none; cursor:pointer;">Ja</button>
+        <button onclick="kochmodusMitRezept(false)" style="width:auto; flex:1; padding:10px; border-radius:8px; border:1px solid var(--border); background:none; cursor:pointer;">Nein, frei kochen</button>
+      </div>
+      <div id="kochmodus-rezept-auswahl" style="display:none;">
+        <label for="kochmodus-recipe-select">Rezept</label>
+        <select id="kochmodus-recipe-select"></select>
+      </div>
+      <button class="primary" style="margin-top:14px;" onclick="startKochmodus()">Kochmodus starten</button>
+    </div>
+  </div>
 </div>
+
+<!-- KOCHMODUS VOLLBILD-OVERLAY -->
+<div id="kochmodus-overlay" style="display:none; position:fixed; inset:0; background:#1a1512; color:#f0ebe3; z-index:1000; flex-direction:column;"></div>
 
 <script src="shared.js"></script>
 <script src="recipes.js"></script>
 <script src="reflect.js"></script>
 <script src="progress-history.js"></script>
+<script src="kochmodus.js"></script>
 <script src="init.js"></script>
 </body>
 </html>
