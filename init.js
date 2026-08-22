@@ -4,6 +4,18 @@
   addZutatRow();
   addSchrittRow();
 
+  // ---- Letzten aktiven Tab wiederherstellen (übersteht ein versehentliches Neuladen) ----
+  (function restoreLastTab() {
+    let letzterTab;
+    try { letzterTab = localStorage.getItem('skillet_active_tab'); } catch (e) {}
+    if (letzterTab && document.getElementById('view-' + letzterTab)) {
+      showTab(letzterTab);
+    }
+  })();
+
+  // ---- Laufende Kochmodus-Session wiederherstellen, falls vorhanden ----
+  restoreKochmodusSessionIfAny();
+
   // ---- Geteilte URL empfangen (Web Share Target API) ----
   (function handleSharedUrl() {
     const params = new URLSearchParams(window.location.search);
