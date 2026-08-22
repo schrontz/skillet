@@ -5,7 +5,63 @@ let kochmodusSchrittIndex = 0;
 let kochmodusOhneRezept = false;
 let wakeLock = null;
 let timerInterval = null;
-let timerRemaining = 0; // Sekunden
+let timerEndAt = null; // Zeitstempel (ms), zu dem der Timer abläuft
+let alarmActive = false;
+let alarmSoundInterval = null;
+
+// ---- Session in localStorage merken, damit ein versehentliches Neuladen nicht alles verwirft ----
+function saveKochmodusSession() {
+  const notiz = document.getElementById('kochmodus-notiz')?.value || '';
+  const session = {
+    active: true,
+    recipeId: kochmodusRezept ? kochmodusRezept.id : null,
+    ohneRezept: kochmodusOhneRezept,
+    schrittIndex: kochmodusSchrittIndex,
+    notiz,
+    timerEndAt
+  };
+  try { localStorage.setItem('skillet_kochmodus_session', JSON.stringify(session)); } catch (e) { /* egal, dann eben nicht */ }
+}
+
+function clearKochmodusSession() {
+  try { localStorage.removeItem('skillet_kochmodus_session'); } catch (e) {}
+}
+
+async function restoreKochmodusSessionIfAny() {
+  let raw;
+  try { raw = localStorage.getItem('skillet_kochmodus_session'); } catch (e) { return; }
+  if (!raw) return;
+
+  let session;
+  try { session = JSON.parse(raw); } catch (e) { return; }
+  if (!session || !session.active) return;
+
+  kochmodusOhneRezept = session.ohneRezept;
+  kochmodusSchrittIndex = session.schrittIndex || 0;
+  kochmodusRezept = null;
+
+  if (session.recipeId) {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten_strukturiert,anleitung,anleitung_schritte&id=eq.${session.recipeId}`,
+        { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+      );
+      const [r] = await res.json();
+      kochmodusRezept = r || null;
+    } catch (e) { /* Rezept evtl. gelöscht - Kochmodus läuft dann einfach ohne Rezeptbezug weiter */ }
+  }
+
+  timerEndAt = (session.timerEndAt && session.timerEndAt > Date.now()) ? session.timerEndAt : null;
+  if (timerEndAt) timerInterval = setInterval(tickTimer, 250);
+
+  renderKochmodusOverlay();
+  const notizFeld = document.getElementById('kochmodus-notiz');
+  if (notizFeld && session.notiz) notizFeld.value = session.notiz;
+
+  document.getElementById('kochmodus-overlay').style.display = 'flex';
+  requestWakeLock();
+  document.addEventListener('visibilitychange', handleVisibilityForWakeLock);
+}
 
 // ---- Start-Ansicht ----
 function kochmodusMitRezept(mitRezept) {
@@ -44,6 +100,7 @@ async function startKochmodus() {
   document.getElementById('kochmodus-overlay').style.display = 'flex';
   requestWakeLock();
   document.addEventListener('visibilitychange', handleVisibilityForWakeLock);
+  saveKochmodusSession();
 }
 
 // ---- Overlay rendern ----
@@ -88,6 +145,12 @@ function renderKochmodusOverlay() {
       <button onclick="timerReset()" style="width:auto; padding:6px 10px; border-radius:6px; border:1px solid #555; background:none; color:#f0ebe3; cursor:pointer;">↺</button>
     </div>
 
+    ${alarmActive ? `
+      <div onclick="stopAlarm()" style="background:var(--accent); color:white; text-align:center; padding:14px; margin:0 20px 10px; border-radius:8px; font-weight:600; cursor:pointer;">
+        ⏰ Timer fertig! Antippen zum Stoppen
+      </div>
+    ` : ''}
+
     ${zutatenHtml}
 
     <div style="flex:1; display:flex; align-items:center; justify-content:center; min-height:80px;">
@@ -96,7 +159,7 @@ function renderKochmodusOverlay() {
 
     <details style="margin:0 20px 10px;">
       <summary style="cursor:pointer; opacity:0.8;">Notiz</summary>
-      <textarea id="kochmodus-notiz" placeholder="Fällt dir grad was auf?" style="width:100%; min-height:60px; margin-top:8px; padding:8px; border-radius:6px; border:1px solid #555; background:#2a2420; color:#f0ebe3; font-family:inherit; box-sizing:border-box;"></textarea>
+      <textarea id="kochmodus-notiz" placeholder="Fällt dir grad was auf?" oninput="saveKochmodusSession()" style="width:100%; min-height:60px; margin-top:8px; padding:8px; border-radius:6px; border:1px solid #555; background:#2a2420; color:#f0ebe3; font-family:inherit; box-sizing:border-box;"></textarea>
     </details>
 
     ${hatSchritte ? `
@@ -119,40 +182,51 @@ function kochmodusSchritt(delta) {
   renderKochmodusOverlay();
   const notizFeld = document.getElementById('kochmodus-notiz');
   if (notizFeld) notizFeld.value = notizVorher; // Notiz bleibt beim Schritt-Wechsel erhalten
+  saveKochmodusSession();
 }
 
-// ---- Timer (v1: ein einzelner Timer) ----
+// ---- Timer (v1: ein einzelner Timer, zeitstempel-basiert) ----
 function timerStart() {
   if (timerInterval) return; // läuft schon
-  if (timerRemaining <= 0) {
+  if (!timerEndAt) {
     const minuten = parseFloat(document.getElementById('timer-minuten').value);
     if (!minuten) return;
-    timerRemaining = Math.round(minuten * 60);
+    timerEndAt = Date.now() + minuten * 60000;
   }
-  timerInterval = setInterval(() => {
-    timerRemaining--;
-    updateTimerAnzeige();
-    if (timerRemaining <= 0) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-      timerAlarm();
-    }
-  }, 1000);
+  timerInterval = setInterval(tickTimer, 250);
+  saveKochmodusSession();
+}
+
+function tickTimer() {
+  const remaining = Math.round((timerEndAt - Date.now()) / 1000);
+  updateTimerAnzeige(remaining);
+  if (remaining <= 0) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    timerEndAt = null;
+    startAlarm();
+    saveKochmodusSession();
+  }
 }
 
 function timerReset() {
   clearInterval(timerInterval);
   timerInterval = null;
-  timerRemaining = 0;
-  updateTimerAnzeige();
+  timerEndAt = null;
+  if (alarmActive) stopAlarm();
+  updateTimerAnzeige(0);
+  saveKochmodusSession();
 }
 
-function updateTimerAnzeige() {
+function updateTimerAnzeige(remainingOverride) {
   const el = document.getElementById('timer-anzeige');
   if (!el) return;
-  if (timerRemaining > 0 || timerInterval) {
-    const m = Math.floor(timerRemaining / 60);
-    const s = timerRemaining % 60;
+  const remaining = remainingOverride !== undefined
+    ? remainingOverride
+    : (timerEndAt ? Math.round((timerEndAt - Date.now()) / 1000) : 0);
+  if (remaining > 0) {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
     el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   } else {
     el.textContent = '--:--';
@@ -168,7 +242,26 @@ function timerAlarm() {
     osc.start();
     setTimeout(() => osc.stop(), 400);
   } catch (e) { /* Web Audio nicht verfügbar - kein Beep, kein Absturz */ }
-  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+}
+
+// ---- Alarm läuft wiederholt (Ton + Vibration + Blinken), bis aktiv bestätigt ----
+function startAlarm() {
+  if (alarmActive) return;
+  alarmActive = true;
+  document.getElementById('kochmodus-overlay').classList.add('kochmodus-alarm');
+  renderKochmodusOverlay();
+  timerAlarm();
+  alarmSoundInterval = setInterval(timerAlarm, 1200);
+}
+
+function stopAlarm() {
+  alarmActive = false;
+  clearInterval(alarmSoundInterval);
+  alarmSoundInterval = null;
+  if (navigator.vibrate) navigator.vibrate(0); // laufende Vibration stoppen
+  document.getElementById('kochmodus-overlay').classList.remove('kochmodus-alarm');
+  renderKochmodusOverlay();
 }
 
 // ---- Always-on Screen (Wake Lock API) ----
@@ -200,10 +293,12 @@ function beendeKochmodus(mitHandoff) {
 
   clearInterval(timerInterval);
   timerInterval = null;
-  timerRemaining = 0;
+  timerEndAt = null;
+  if (alarmActive) stopAlarm();
   releaseWakeLock();
   document.removeEventListener('visibilitychange', handleVisibilityForWakeLock);
   document.getElementById('kochmodus-overlay').style.display = 'none';
+  clearKochmodusSession();
 
   if (mitHandoff) {
     handoffZuReflexion(kochmodusRezept ? kochmodusRezept.id : null, notiz);
