@@ -21,6 +21,7 @@
     if (tab === 'recipes') loadRecipes();
     if (tab === 'reflect') loadRecipesForReflect();
     if (tab === 'history') loadHistory();
+    try { localStorage.setItem('skillet_active_tab', tab); } catch (e) { /* localStorage evtl. nicht verfügbar - kein Beinbruch */ }
   }
 
 
