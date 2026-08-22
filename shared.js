@@ -11,10 +11,12 @@
     document.getElementById('view-recipes').style.display = tab === 'recipes' ? 'block' : 'none';
     document.getElementById('view-progress').style.display = tab === 'progress' ? 'block' : 'none';
     document.getElementById('view-history').style.display = tab === 'history' ? 'block' : 'none';
+    document.getElementById('view-kochen').style.display = tab === 'kochen' ? 'block' : 'none';
     document.getElementById('tab-reflect').classList.toggle('active', tab === 'reflect');
     document.getElementById('tab-recipes').classList.toggle('active', tab === 'recipes');
     document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
     document.getElementById('tab-history').classList.toggle('active', tab === 'history');
+    document.getElementById('tab-kochen').classList.toggle('active', tab === 'kochen');
     if (tab === 'progress') loadProgress();
     if (tab === 'recipes') loadRecipes();
     if (tab === 'reflect') loadRecipesForReflect();
