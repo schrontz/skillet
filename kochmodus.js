@@ -103,6 +103,15 @@ async function startKochmodus() {
   saveKochmodusSession();
 }
 
+// ---- Schriftgröße an Textlänge anpassen, damit kein Text oben/unten abgeschnitten wird ----
+function schrittFontSize(text) {
+  const laenge = (text || '').length;
+  if (laenge > 220) return '1.05rem';
+  if (laenge > 140) return '1.25rem';
+  if (laenge > 80) return '1.4rem';
+  return '1.6rem';
+}
+
 // ---- Overlay rendern ----
 function renderKochmodusOverlay() {
   const overlay = document.getElementById('kochmodus-overlay');
@@ -113,9 +122,10 @@ function renderKochmodusOverlay() {
   if (hatSchritte) {
     const schritte = kochmodusRezept.anleitung_schritte;
     const aktuell = schritte[kochmodusSchrittIndex];
+    const groesse = schrittFontSize(aktuell);
     inhalt = `
       <div style="text-align:center; font-size:0.9rem; opacity:0.7; margin-bottom:10px;">Schritt ${kochmodusSchrittIndex + 1} von ${schritte.length}</div>
-      <div style="font-size:1.6rem; text-align:center; padding:0 20px; line-height:1.4;">${aktuell}</div>
+      <div style="font-size:${groesse}; text-align:center; padding:0 20px; line-height:1.4;">${aktuell}</div>
     `;
   } else if (kochmodusRezept && kochmodusRezept.anleitung) {
     inhalt = `<div style="text-align:center; opacity:0.85; padding:0 20px; white-space:pre-wrap; font-size:1.05rem;">${kochmodusRezept.anleitung}</div>`;
@@ -153,7 +163,7 @@ function renderKochmodusOverlay() {
 
     ${zutatenHtml}
 
-    <div style="flex:1; display:flex; align-items:center; justify-content:center; min-height:80px;">
+    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow-y:auto; min-height:80px; padding:10px 0;">
       ${inhalt}
     </div>
 
@@ -300,10 +310,86 @@ function beendeKochmodus(mitHandoff) {
   document.getElementById('kochmodus-overlay').style.display = 'none';
   clearKochmodusSession();
 
-  if (mitHandoff) {
-    handoffZuReflexion(kochmodusRezept ? kochmodusRezept.id : null, notiz);
-  } else {
+  if (!mitHandoff) {
     showTab('kochen');
+    return;
+  }
+
+  if (kochmodusRezept) {
+    handoffZuReflexion(kochmodusRezept.id, notiz);
+  } else {
+    fragRezeptDiktat(notiz);
+  }
+}
+
+// ---- Nach rezeptlosem Kochen: fragen, ob daraus ein vollständiges Rezept werden soll ----
+function fragRezeptDiktat(notiz) {
+  window.pendingKochmodusNotiz = notiz;
+  showTab('recipes');
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = 'kochmodus-diktat-card';
+  card.innerHTML = `
+    <div style="margin-bottom:10px;">Du hast frei gekocht – möchtest du daraus ein Rezept machen?</div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="starteRezeptDiktat()" class="primary" style="width:auto; flex:1; margin-top:0;">Ja, diktieren</button>
+      <button onclick="handoffOhneRezept()" style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;">Nein, weiter zur Reflexion</button>
+    </div>
+  `;
+  document.getElementById('view-recipes').prepend(card);
+}
+
+function handoffOhneRezept() {
+  document.getElementById('kochmodus-diktat-card')?.remove();
+  handoffZuReflexion(null, window.pendingKochmodusNotiz || '');
+  window.pendingKochmodusNotiz = null;
+}
+
+function starteRezeptDiktat() {
+  const card = document.getElementById('kochmodus-diktat-card');
+  card.innerHTML = `
+    <div style="margin-bottom:8px; font-weight:600;">Diktier oder tippe dein Rezept</div>
+    <div class="muted" style="margin-bottom:8px; font-size:0.85rem;">Was hast du reingetan, wie viel, in welcher Reihenfolge? (Mikrofon-Taste deiner Tastatur nutzen)</div>
+    <textarea id="kochmodus-diktat-text" style="min-height:120px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box;"></textarea>
+    <button class="primary" style="margin-top:10px;" onclick="extrahiereRezeptDiktat()">Rezept erstellen</button>
+    <div class="status-line" id="kochmodus-diktat-status"></div>
+  `;
+}
+
+async function extrahiereRezeptDiktat() {
+  const text = document.getElementById('kochmodus-diktat-text').value.trim();
+  if (!text) return;
+  const statusEl = document.getElementById('kochmodus-diktat-status');
+  statusEl.textContent = "Rezept wird erkannt...";
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-recipe-from-text`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (data.error) { statusEl.textContent = "Fehler: " + data.error; return; }
+
+    document.getElementById('kochmodus-diktat-card')?.remove();
+
+    document.getElementById('recipe-titel-input').value = data.titel || "";
+    document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
+
+    clearZutatenRows();
+    (data.zutatenStrukturiert || []).forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+    if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+    clearSchritteRows();
+    (data.anleitungSchritte || []).forEach(s => addSchrittRow(s));
+    if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+
+    window.pendingKochmodusHandoff = true; // signalisiert submitRecipe: nach dem Speichern zur Reflexion weiterleiten
+    document.getElementById('recipe-status-line').textContent = "Bitte prüfen, dann unten speichern.";
+    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } catch (e) {
+    statusEl.textContent = "Verbindungsfehler: " + e.message;
   }
 }
 
