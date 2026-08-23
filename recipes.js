@@ -183,6 +183,13 @@
         : "Gespeichert! Erkenne verwendete Techniken...";
       loadRecipes();
 
+      if (window.pendingKochmodusHandoff) {
+        window.pendingKochmodusHandoff = false;
+        const notiz = window.pendingKochmodusNotiz || '';
+        window.pendingKochmodusNotiz = null;
+        setTimeout(() => handoffZuReflexion(savedRecipe.id, notiz), 600);
+      }
+
       await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
       statusLine.textContent = hinweisOriginalWeg ? "Gespeichert (ohne Kopie-Verweis, Original war weg)." : "Gespeichert!";
     } catch (e) {
