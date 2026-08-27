@@ -52,9 +52,10 @@
     margin-bottom: 24px;
   }
 
-  /* Kochmodus ist als Küchen-Begleiter fürs Handy gedacht - auf breiten Bildschirmen ausblenden */
+  /* Kochmodus ist als Küchen-Begleiter fürs Handy gedacht - auf breiten Bildschirmen ausblenden.
+     Rezepte/Freestyle bleiben unter "Kochen" auch auf dem Desktop nutzbar. */
   @media (min-width: 700px) {
-    #tab-kochen, #view-kochen, #kochmodus-overlay { display: none !important; }
+    #header-kochmodus, #view-kochen, #kochmodus-overlay { display: none !important; }
   }
   @keyframes alarmBlink {
     0%, 100% { background-color: #1a1512; }
@@ -91,6 +92,18 @@
   .dot.filled { background: var(--accent); }
   .muted { color: var(--muted); font-size: 0.85rem; }
   .status-line { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
+
+  .accordion-item { margin-bottom: 10px; }
+  .accordion-header {
+    width: 100%; text-align: left; padding: 12px 16px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    font-weight: 600; font-size: 1rem; cursor: pointer; color: var(--ink);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .accordion-header::after { content: '▸'; color: var(--muted); font-weight: normal; }
+  .accordion-header.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .accordion-header.active::after { content: '▾'; color: white; }
+  .accordion-body { padding-top: 12px; }
 </style>
 </head>
 <body>
@@ -99,53 +112,15 @@
   <div class="subtitle">Koch-Skills reflektieren und wachsen sehen</div>
 
   <nav>
-    <button id="tab-reflect" class="active" onclick="showTab('reflect')">Reflektieren</button>
-    <button id="tab-recipes" onclick="showTab('recipes')">Rezepte</button>
-    <button id="tab-progress" onclick="showTab('progress')">Fortschritt</button>
-    <button id="tab-history" onclick="showTab('history')">Verlauf</button>
-    <button id="tab-kochen" onclick="showTab('kochen')">Kochen</button>
+    <button id="cat-kochen" class="active" onclick="openSection('recipes')">🍳 Kochen</button>
+    <button id="cat-lernen" onclick="openSection('reflect')">🧠 Lernen</button>
   </nav>
 
-  <!-- REFLECT VIEW -->
-  <div id="view-reflect" class="tab-panel">
-    <div class="card">
-      <label for="reflect-recipe-select">Rezept (optional)</label>
-      <select id="reflect-recipe-select" onchange="onReflectRecipeChange()">
-        <option value="">Kein Rezept / freie Auswahl</option>
-      </select>
-
-      <div id="technique-select-wrapper" style="margin-top:14px;">
-        <label for="technique-select">Technik</label>
-        <select id="technique-select" onchange="onTechniqueSelectChange()">
-          <option value="">Automatisch erkennen lassen</option>
-        </select>
-      </div>
-      <div id="technique-fixed-label" style="display:none; margin-top:14px;">
-        <label>Technik</label>
-        <div style="padding:10px 12px; background: var(--accent-light); border-radius:8px; font-weight:600;"></div>
-      </div>
-
-      <div id="auto-titel-wrapper" style="margin-top:14px;">
-        <label for="auto-titel-input">Titel (optional, nur falls kein Rezept gewählt)</label>
-        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht"
-          style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
-      </div>
-
-      <label style="margin-top:14px;">Was hast du gemacht?</label>
-      <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
-
-      <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
-      <div class="status-line" id="status-line"></div>
-    </div>
-
-    <div id="auto-detect-info" class="muted" style="padding:0 4px;"></div>
-    <div id="reflect-vorschlag-card"></div>
-
-    <div id="result-card"></div>
-  </div>
-
-  <!-- RECIPES VIEW -->
-  <div id="view-recipes" class="tab-panel" style="display:none;">
+  <!-- KATEGORIE: KOCHEN -->
+  <div id="category-kochen" class="tab-panel">
+    <div class="accordion-item">
+      <button class="accordion-header active" id="header-recipes" onclick="openSection('recipes')">Rezepte</button>
+      <div id="view-recipes" class="accordion-body">
     <div class="card">
       <label for="import-url-input">Von URL importieren</label>
       <div style="display:flex; gap:8px;">
@@ -188,24 +163,11 @@
       <div class="muted" style="margin-bottom:10px;">Deine Rezepte</div>
       <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
     </div>
-  </div>
-
-  <!-- PROGRESS VIEW -->
-  <div id="view-progress" class="tab-panel" style="display:none;">
-    <div class="card" id="progress-list">
-      <div class="muted">Lade Fortschritt...</div>
+      </div>
     </div>
-  </div>
-
-  <!-- HISTORY VIEW -->
-  <div id="view-history" class="tab-panel" style="display:none;">
-    <div class="card" id="history-list">
-      <div class="muted">Lade Verlauf...</div>
-    </div>
-  </div>
-
-  <!-- KOCHMODUS START VIEW -->
-  <div id="view-kochen" class="tab-panel" style="display:none;">
+    <div class="accordion-item">
+      <button class="accordion-header" id="header-kochmodus" onclick="openSection('kochmodus')">Kochmodus</button>
+      <div id="view-kochen" class="accordion-body" style="display:none;">
     <div class="card" id="kochmodus-start">
       <div style="margin-bottom:10px; font-weight:600;">Nach Rezept kochen?</div>
       <div style="display:flex; gap:8px; margin-bottom:14px;">
@@ -217,6 +179,79 @@
         <select id="kochmodus-recipe-select"></select>
       </div>
       <button class="primary" style="margin-top:14px;" onclick="startKochmodus()">Kochmodus starten</button>
+    </div>
+      </div>
+    </div>
+    <div class="accordion-item">
+      <button class="accordion-header" id="header-freestyle" onclick="openSection('freestyle')">Freestyle</button>
+      <div id="view-freestyle" class="accordion-body" style="display:none;">
+    <div class="card">
+      <div style="margin-bottom:8px; font-weight:600;">Rezept diktieren oder tippen</div>
+      <div class="muted" style="margin-bottom:8px; font-size:0.85rem;">Was hast du reingetan, wie viel, in welcher Reihenfolge? (Mikrofon-Taste deiner Tastatur nutzen)</div>
+      <textarea id="freestyle-diktat-text" style="min-height:120px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box;"></textarea>
+      <button class="primary" style="margin-top:10px;" onclick="extrahiereFreestyleRezept()">Rezept erstellen</button>
+      <div class="status-line" id="freestyle-status"></div>
+    </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KATEGORIE: LERNEN -->
+  <div id="category-lernen" class="tab-panel" style="display:none;">
+    <div class="accordion-item">
+      <button class="accordion-header active" id="header-reflect" onclick="openSection('reflect')">Reflektieren</button>
+      <div id="view-reflect" class="accordion-body">
+    <div class="card">
+      <label for="reflect-recipe-select">Rezept (optional)</label>
+      <select id="reflect-recipe-select" onchange="onReflectRecipeChange()">
+        <option value="">Kein Rezept / freie Auswahl</option>
+      </select>
+
+      <div id="technique-select-wrapper" style="margin-top:14px;">
+        <label for="technique-select">Technik</label>
+        <select id="technique-select" onchange="onTechniqueSelectChange()">
+          <option value="">Automatisch erkennen lassen</option>
+        </select>
+      </div>
+      <div id="technique-fixed-label" style="display:none; margin-top:14px;">
+        <label>Technik</label>
+        <div style="padding:10px 12px; background: var(--accent-light); border-radius:8px; font-weight:600;"></div>
+      </div>
+
+      <div id="auto-titel-wrapper" style="margin-top:14px;">
+        <label for="auto-titel-input">Titel (optional, nur falls kein Rezept gewählt)</label>
+        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht"
+          style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+      </div>
+
+      <label style="margin-top:14px;">Was hast du gemacht?</label>
+      <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
+
+      <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
+      <div class="status-line" id="status-line"></div>
+    </div>
+
+    <div id="auto-detect-info" class="muted" style="padding:0 4px;"></div>
+    <div id="reflect-vorschlag-card"></div>
+
+    <div id="result-card"></div>
+      </div>
+    </div>
+    <div class="accordion-item">
+      <button class="accordion-header" id="header-progress" onclick="openSection('progress')">Fortschritt</button>
+      <div id="view-progress" class="accordion-body" style="display:none;">
+    <div class="card" id="progress-list">
+      <div class="muted">Lade Fortschritt...</div>
+    </div>
+      </div>
+    </div>
+    <div class="accordion-item">
+      <button class="accordion-header" id="header-history" onclick="openSection('history')">Verlauf</button>
+      <div id="view-history" class="accordion-body" style="display:none;">
+    <div class="card" id="history-list">
+      <div class="muted">Lade Verlauf...</div>
+    </div>
+      </div>
     </div>
   </div>
 </div>

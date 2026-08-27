@@ -6,22 +6,42 @@
 
   let techniques = [];
 
-  function showTab(tab) {
-    document.getElementById('view-reflect').style.display = tab === 'reflect' ? 'block' : 'none';
-    document.getElementById('view-recipes').style.display = tab === 'recipes' ? 'block' : 'none';
-    document.getElementById('view-progress').style.display = tab === 'progress' ? 'block' : 'none';
-    document.getElementById('view-history').style.display = tab === 'history' ? 'block' : 'none';
-    document.getElementById('view-kochen').style.display = tab === 'kochen' ? 'block' : 'none';
-    document.getElementById('tab-reflect').classList.toggle('active', tab === 'reflect');
-    document.getElementById('tab-recipes').classList.toggle('active', tab === 'recipes');
-    document.getElementById('tab-progress').classList.toggle('active', tab === 'progress');
-    document.getElementById('tab-history').classList.toggle('active', tab === 'history');
-    document.getElementById('tab-kochen').classList.toggle('active', tab === 'kochen');
-    if (tab === 'progress') loadProgress();
-    if (tab === 'recipes') loadRecipes();
-    if (tab === 'reflect') loadRecipesForReflect();
-    if (tab === 'history') loadHistory();
-    try { localStorage.setItem('skillet_active_tab', tab); } catch (e) { /* localStorage evtl. nicht verfügbar - kein Beinbruch */ }
+  // ---- Zwei-Ebenen-Navigation: Kategorie (Kochen/Lernen) + Akkordeon-Unterbereich ----
+  const SECTION_CATEGORY = {
+    recipes: 'kochen', kochmodus: 'kochen', freestyle: 'kochen',
+    reflect: 'lernen', progress: 'lernen', history: 'lernen'
+  };
+  const CATEGORY_SECTIONS = {
+    kochen: ['recipes', 'kochmodus', 'freestyle'],
+    lernen: ['reflect', 'progress', 'history']
+  };
+  const SECTION_LOADERS = {
+    recipes: () => loadRecipes(),
+    progress: () => loadProgress(),
+    reflect: () => loadRecipesForReflect(),
+    history: () => loadHistory()
+    // kochmodus, freestyle: keine Ladefunktion nötig
+  };
+
+  function openSection(section) {
+    const category = SECTION_CATEGORY[section];
+    if (!category) return;
+
+    document.getElementById('category-kochen').style.display = category === 'kochen' ? 'block' : 'none';
+    document.getElementById('category-lernen').style.display = category === 'lernen' ? 'block' : 'none';
+    document.getElementById('cat-kochen').classList.toggle('active', category === 'kochen');
+    document.getElementById('cat-lernen').classList.toggle('active', category === 'lernen');
+
+    CATEGORY_SECTIONS[category].forEach(s => {
+      const body = document.getElementById('view-' + s);
+      const header = document.getElementById('header-' + s);
+      if (body) body.style.display = s === section ? 'block' : 'none';
+      if (header) header.classList.toggle('active', s === section);
+    });
+
+    if (SECTION_LOADERS[section]) SECTION_LOADERS[section]();
+
+    try { localStorage.setItem('skillet_active_section', section); } catch (e) { /* localStorage evtl. nicht verfügbar - kein Beinbruch */ }
   }
 
 

@@ -4,12 +4,12 @@
   addZutatRow();
   addSchrittRow();
 
-  // ---- Letzten aktiven Tab wiederherstellen (übersteht ein versehentliches Neuladen) ----
-  (function restoreLastTab() {
-    let letzterTab;
-    try { letzterTab = localStorage.getItem('skillet_active_tab'); } catch (e) {}
-    if (letzterTab && document.getElementById('view-' + letzterTab)) {
-      showTab(letzterTab);
+  // ---- Letzten aktiven Bereich wiederherstellen (übersteht ein versehentliches Neuladen) ----
+  (function restoreLastSection() {
+    let letzteSektion;
+    try { letzteSektion = localStorage.getItem('skillet_active_section'); } catch (e) {}
+    if (letzteSektion && document.getElementById('view-' + letzteSektion)) {
+      openSection(letzteSektion);
     }
   })();
 
@@ -23,7 +23,7 @@
     // manche Apps legen den Link in "text" statt "url" ab - grob nach http(s) suchen
     const urlMatch = geteilteUrl.match(/https?:\/\/\S+/);
     if (urlMatch) {
-      showTab('recipes');
+      openSection('recipes');
       document.getElementById('import-url-input').value = urlMatch[0];
       // kurze Verzögerung, damit die Rezepte-Ansicht sicher aufgebaut ist
       setTimeout(() => importRecipeFromUrl(), 300);

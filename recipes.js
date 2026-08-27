@@ -198,6 +198,43 @@
     btn.disabled = false;
   }
 
+  // ---- Freestyle: Rezept diktieren/tippen, unabhängig vom Kochmodus ----
+  async function extrahiereFreestyleRezept() {
+    const text = document.getElementById('freestyle-diktat-text').value.trim();
+    if (!text) return;
+    const statusEl = document.getElementById('freestyle-status');
+    statusEl.textContent = "Rezept wird erkannt...";
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-recipe-from-text`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json();
+      if (data.error) { statusEl.textContent = "Fehler: " + data.error; return; }
+
+      document.getElementById('recipe-titel-input').value = data.titel || "";
+      document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
+
+      clearZutatenRows();
+      (data.zutatenStrukturiert || []).forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+      if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+
+      clearSchritteRows();
+      (data.anleitungSchritte || []).forEach(s => addSchrittRow(s));
+      if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+
+      document.getElementById('freestyle-diktat-text').value = "";
+      statusEl.textContent = "";
+      openSection('recipes');
+      document.getElementById('recipe-status-line').textContent = "Bitte prüfen, dann unten speichern.";
+      document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e) {
+      statusEl.textContent = "Verbindungsfehler: " + e.message;
+    }
+  }
+
   // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
   function insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe) {
     const manuellePortionen = document.getElementById('recipe-portionen-input').value;

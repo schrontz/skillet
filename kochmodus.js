@@ -311,7 +311,7 @@ function beendeKochmodus(mitHandoff) {
   clearKochmodusSession();
 
   if (!mitHandoff) {
-    showTab('kochen');
+    openSection('kochmodus');
     return;
   }
 
@@ -325,7 +325,7 @@ function beendeKochmodus(mitHandoff) {
 // ---- Nach rezeptlosem Kochen: fragen, ob daraus ein vollständiges Rezept werden soll ----
 function fragRezeptDiktat(notiz) {
   window.pendingKochmodusNotiz = notiz;
-  showTab('recipes');
+  openSection('recipes');
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -400,6 +400,6 @@ async function handoffZuReflexion(recipeId, notiz) {
     document.getElementById('reflect-recipe-select').value = recipeId;
     onReflectRecipeChange();
   }
-  showTab('reflect');
+  openSection('reflect');
   if (notiz) document.getElementById('beschreibung').value = notiz;
 }
