@@ -55,7 +55,7 @@
   /* Kochmodus ist als Küchen-Begleiter fürs Handy gedacht - auf breiten Bildschirmen ausblenden.
      Rezepte/Freestyle bleiben unter "Kochen" auch auf dem Desktop nutzbar. */
   @media (min-width: 700px) {
-    #header-kochmodus, #view-kochen, #kochmodus-overlay { display: none !important; }
+    #header-kochmodus, #view-kochmodus, #kochmodus-overlay { display: none !important; }
   }
   @keyframes alarmBlink {
     0%, 100% { background-color: #1a1512; }
@@ -167,7 +167,7 @@
     </div>
     <div class="accordion-item">
       <button class="accordion-header" id="header-kochmodus" onclick="openSection('kochmodus')">Kochmodus</button>
-      <div id="view-kochen" class="accordion-body" style="display:none;">
+      <div id="view-kochmodus" class="accordion-body" style="display:none;">
     <div class="card" id="kochmodus-start">
       <div style="margin-bottom:10px; font-weight:600;">Nach Rezept kochen?</div>
       <div style="display:flex; gap:8px; margin-bottom:14px;">
