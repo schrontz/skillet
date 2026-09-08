@@ -146,6 +146,11 @@
     statusLine.textContent = "Speichere...";
 
     try {
+      if (editingOriginalId) {
+        await updateOriginalRecipe(editingOriginalId, titel, zutaten, anleitung, zutatenListe, schritteListe);
+        return;
+      }
+
       let kopieVonId = editingCopyOf ? editingCopyOf.id : null;
       let hinweisOriginalWeg = false;
 
@@ -235,6 +240,52 @@
     }
   }
 
+  // ---- Original direkt aktualisieren (kein neues Rezept, kein Kopie-Verweis) ----
+  async function updateOriginalRecipe(id, titel, zutaten, anleitung, zutatenListe, schritteListe) {
+    const btn = document.getElementById('recipe-submit-btn');
+    const statusLine = document.getElementById('recipe-status-line');
+    const manuellePortionen = document.getElementById('recipe-portionen-input').value;
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?id=eq.${id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: ANON_KEY,
+        Authorization: `Bearer ${ANON_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation"
+      },
+      body: JSON.stringify({
+        titel,
+        zutaten,
+        anleitung,
+        basis_portionen: manuellePortionen ? parseInt(manuellePortionen, 10) : null,
+        zutaten_strukturiert: zutatenListe && zutatenListe.length > 0 ? zutatenListe : null,
+        anleitung_schritte: schritteListe && schritteListe.length > 0 ? schritteListe : null
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      statusLine.textContent = "Fehler: " + err;
+      btn.disabled = false;
+      return;
+    }
+
+    const [savedRecipe] = await res.json();
+    document.getElementById('recipe-titel-input').value = "";
+    clearZutatenRows(); addZutatRow();
+    clearSchritteRows(); addSchrittRow();
+    document.getElementById('recipe-portionen-input').value = "";
+    document.getElementById('edit-mode-banner').style.display = 'none';
+    editingOriginalId = null;
+    statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
+    loadRecipes();
+
+    await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
+    statusLine.textContent = "Gespeichert!";
+    btn.disabled = false;
+  }
+
   // ---- Hilfsfunktion: Insert-Request für ein Rezept ----
   function insertRecipe(titel, zutaten, anleitung, kopieVonId, zutatenListe, schritteListe) {
     const manuellePortionen = document.getElementById('recipe-portionen-input').value;
@@ -308,16 +359,22 @@
 
   async function confirmTechniques(recipeId) {
     const checked = Array.from(document.querySelectorAll('.detect-checkbox:checked')).map(cb => cb.value);
-    const rows = checked.map(technique_id => ({ recipe_id: recipeId, technique_id }));
-
     const detectCard = document.getElementById('detect-card');
 
-    if (rows.length === 0) {
-      detectCard.innerHTML = `<div class="card muted">Keine Techniken zugeordnet.</div>`;
-      return;
-    }
-
     try {
+      // Bestehende Zuordnungen für dieses Rezept vorher entfernen - wichtig beim Bearbeiten
+      // des Originals, sonst gäbe es einen Konflikt mit schon vorhandenen Zuordnungen
+      await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques?recipe_id=eq.${recipeId}`, {
+        method: "DELETE",
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
+      });
+
+      if (checked.length === 0) {
+        detectCard.innerHTML = `<div class="card muted">Keine Techniken zugeordnet.</div>`;
+        return;
+      }
+
+      const rows = checked.map(technique_id => ({ recipe_id: recipeId, technique_id }));
       const res = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
         method: "POST",
         headers: {
@@ -366,7 +423,6 @@
       <div class="progress-item" style="align-items: flex-start; flex-direction: column; cursor:pointer;" onclick="toggleRecipeDetail('${r.id}')">
         <div style="font-weight:600;">${r.titel}</div>
         ${r.kopie_von && titelById[r.kopie_von] ? `<div class="muted" style="font-size:0.8rem;">Kopie von "${titelById[r.kopie_von]}"</div>` : ''}
-        ${r.zutaten ? `<div class="muted" style="margin-top:4px;">${r.zutaten}</div>` : ''}
         <div id="recipe-detail-${r.id}" style="display:none; width:100%; margin-top:10px;" onclick="event.stopPropagation()"></div>
       </div>
     `).join('');
@@ -406,9 +462,11 @@
         <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
         <div id="recipe-techniques-${id}" class="muted">Lade...</div>
         ${r.quelle_url ? `<div style="margin-top:8px;"><a href="${r.quelle_url}" target="_blank" style="color: var(--accent); font-size:0.85rem;">Quelle öffnen</a></div>` : ''}
-        <div style="display:flex; gap:8px; margin-top:14px;">
-          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;" onclick="startEditAsCopy('${id}')">Bearbeiten (als Kopie)</button>
-          <button style="width:auto; flex:1; padding:8px 12px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer;" onclick="deleteRecipe('${id}')">Löschen</button>
+        <div id="reflexions-hinweis-${id}"></div>
+        <div style="display:flex; gap:6px; margin-top:14px;">
+          <button title="Original direkt ändern" onclick="startEditOriginal('${id}')" style="width:auto; flex:1; padding:8px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:0.85rem;">✏️ Original</button>
+          <button title="Als neue Kopie bearbeiten" onclick="startEditAsCopy('${id}')" style="width:auto; flex:1; padding:8px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:0.85rem;">📄 Kopie</button>
+          <button title="Rezept löschen" onclick="deleteRecipe('${id}')" style="width:auto; padding:8px 12px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer; font-size:0.85rem;">🗑️</button>
         </div>
       </div>
     `;
@@ -418,6 +476,7 @@
       renderZutatenListe(id);
     }
     loadRecipeTechniquesForDetail(id);
+    warnFallsReflektiert(id);
   }
 
   // ---- Portionen ändern und Zutatenliste neu berechnen ----
@@ -480,13 +539,25 @@
     el.textContent = names.length ? names.join(', ') : '(keine zugeordnet)';
   }
 
-  // ---- Bearbeiten als Kopie: Formular befüllen ----
+  // ---- Hinweis, falls das Rezept schon reflektiert wurde (Original-Änderung würde den Verlauf "veralten") ----
+  async function warnFallsReflektiert(recipeId) {
+    const el = document.getElementById(`reflexions-hinweis-${recipeId}`);
+    if (!el) return;
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/reflections?select=id&recipe_id=eq.${recipeId}&limit=1`,
+      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+    );
+    const rows = await res.json();
+    if (rows.length > 0) {
+      el.innerHTML = `<div class="muted" style="font-size:0.78rem; margin-top:6px;">Dieses Rezept wurde bereits reflektiert - "Original" ändert den Text, dein Verlauf bleibt aber auf dem alten Stand stehen. Bei größeren Änderungen ist "Kopie" oft die klarere Wahl.</div>`;
+    }
+  }
+
+  // ---- Bearbeiten als Kopie ODER direkt am Original ----
   let editingCopyOf = null;
+  let editingOriginalId = null;
 
-  function startEditAsCopy(id) {
-    const r = allRecipesCache.find(rec => rec.id === id);
-    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
-
+  function befuelleFormularAusRezept(r) {
     document.getElementById('recipe-titel-input').value = r.titel;
     document.getElementById('recipe-portionen-input').value = r.basis_portionen || '';
 
@@ -505,15 +576,37 @@
       r.anleitung.split("\n").filter(Boolean).forEach(zeile => addSchrittRow(zeile.replace(/^\d+\.\s*/, '').trim()));
     }
     if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+  }
 
-    document.getElementById('edit-mode-original-title').textContent = r.titel;
+  function startEditAsCopy(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    editingCopyOf = { id: r.id, quelle_url: r.quelle_url || null };
+    editingOriginalId = null;
+    befuelleFormularAusRezept(r);
+
+    document.getElementById('edit-mode-text').innerHTML =
+      `Du bearbeitest eine Kopie von "<span id="edit-mode-original-title">${r.titel}</span>". Wird als neues, eigenständiges Rezept gespeichert.`;
     document.getElementById('edit-mode-banner').style.display = 'block';
+    openSection('recipes');
+    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
+  function startEditOriginal(id) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    editingOriginalId = id;
+    editingCopyOf = null;
+    befuelleFormularAusRezept(r);
+
+    document.getElementById('edit-mode-text').innerHTML =
+      `Du änderst "<span id="edit-mode-original-title">${r.titel}</span>" direkt - keine Kopie, das Original wird überschrieben.`;
+    document.getElementById('edit-mode-banner').style.display = 'block';
+    openSection('recipes');
     document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function cancelEditCopy() {
     editingCopyOf = null;
+    editingOriginalId = null;
     document.getElementById('edit-mode-banner').style.display = 'none';
     document.getElementById('recipe-titel-input').value = '';
     clearZutatenRows(); addZutatRow();
