@@ -1,4 +1,5 @@
 // Teil von Skillet - Startbildschirm: Datum und Infos in den Kacheln
+// Zahlen-Badges nur, wo etwas offen ist (wie in Nest) - also nicht bei der Rezeptanzahl
 
 const START_HEADERS = { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` };
 
@@ -32,8 +33,7 @@ function ladeKachelInfos() {
   // Jede Kachel einzeln laden: fällt eine Abfrage aus, bleiben die anderen stehen
   holeJson('recipes?select=titel&order=erstellt_am.desc')
     .then(rezepte => setzeKachel('recipes',
-      rezepte.length ? `Zuletzt: ${rezepte[0].titel}` : 'Noch keine Rezepte',
-      rezepte.length))
+      rezepte.length ? `Zuletzt: ${rezepte[0].titel}` : 'Noch keine Rezepte'))
     .catch(() => setzeKachel('recipes', ''));
 
   Promise.all([holeJson('techniques?select=id'), holeJson('technique_progress?select=level')])

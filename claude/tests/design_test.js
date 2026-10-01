@@ -51,7 +51,7 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(await sichtbar(p, '#start-view'), 'Erster Start zeigt den Startbildschirm');
   check(!(await sichtbar(p, '#bereich-kopf')), 'Kein Bereichskopf auf dem Start');
   check((await p.textContent('#kachel-info-recipes')).includes('Gulasch nach Omas Art'), 'Rezepte-Kachel zeigt das neueste Rezept');
-  check((await p.textContent('#kachel-zahl-recipes')) === '3', 'Rezepte-Kachel zeigt Anzahl 3');
+  check(await p.locator('#kachel-zahl-recipes').count() === 0, 'Rezepte-Kachel ohne Zahlen-Badge (nichts Offenes)');
   check((await p.textContent('#kachel-info-progress')).includes('1 von 2'), 'Fortschritt-Kachel: 1 von 2 Techniken');
   check((await p.textContent('#kachel-info-history')).includes('Deglasieren'), 'Verlauf-Kachel zeigt letzte Reflexion');
   check(!(await sichtbar(p, '#kachel-zahl-freestyle')), 'Freestyle ohne offene Schritte: keine Zahl');
