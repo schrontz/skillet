@@ -80,12 +80,14 @@ async function loadKochmodusRezepte() {
 }
 
 // ---- Kochmodus starten ----
-async function startKochmodus() {
+// direktRezeptId: wenn aus der Rezept-Detailansicht ("Kochen") gestartet
+async function startKochmodus(direktRezeptId) {
   kochmodusSchrittIndex = 0;
   kochmodusRezept = null;
+  if (direktRezeptId) kochmodusOhneRezept = false;
 
   if (!kochmodusOhneRezept) {
-    const recipeId = document.getElementById('kochmodus-recipe-select').value;
+    const recipeId = direktRezeptId || document.getElementById('kochmodus-recipe-select').value;
     if (recipeId) {
       const res = await fetch(
         `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten_strukturiert,anleitung,anleitung_schritte&id=eq.${recipeId}`,
@@ -386,8 +388,8 @@ async function extrahiereRezeptDiktat() {
     if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
 
     window.pendingKochmodusHandoff = true; // signalisiert submitRecipe: nach dem Speichern zur Reflexion weiterleiten
+    zeigeRezeptFormular();
     document.getElementById('recipe-status-line').textContent = "Bitte prüfen, dann unten speichern.";
-    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) {
     statusEl.textContent = "Verbindungsfehler: " + e.message;
   }

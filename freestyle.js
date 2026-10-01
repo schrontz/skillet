@@ -108,9 +108,8 @@ async function setzeFreestyleRezeptZusammen() {
     statusEl.textContent = 'Fertig. Deine Schritte bleiben gespeichert, bis du "Neu anfangen" tippst.';
     btn.disabled = false;
 
-    openSection('recipes');
+    zeigeRezeptFormular();
     document.getElementById('recipe-status-line').textContent = 'Bitte prüfen, dann unten speichern.';
-    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) {
     statusEl.textContent = 'Verbindungsfehler: ' + e.message;
     btn.disabled = false;

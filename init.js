@@ -1,4 +1,4 @@
-// Teil von Skillet - siehe index.html für die anderen Module (shared.js, recipes.js, reflect.js, progress-history.js, init.js)
+// Teil von Skillet - wird als letztes Skript geladen und startet die App
 
   loadTechniques();
   addZutatRow();
@@ -8,8 +8,10 @@
   (function restoreLastSection() {
     let letzteSektion;
     try { letzteSektion = localStorage.getItem('skillet_active_section'); } catch (e) {}
-    if (letzteSektion && document.getElementById('view-' + letzteSektion)) {
+    if (letzteSektion && letzteSektion !== 'start' && document.getElementById('view-' + letzteSektion)) {
       openSection(letzteSektion);
+    } else {
+      zeigeStart();
     }
   })();
 
@@ -23,7 +25,7 @@
     // manche Apps legen den Link in "text" statt "url" ab - grob nach http(s) suchen
     const urlMatch = geteilteUrl.match(/https?:\/\/\S+/);
     if (urlMatch) {
-      openSection('recipes');
+      zeigeRezeptFormular();
       document.getElementById('import-url-input').value = urlMatch[0];
       // kurze Verzögerung, damit die Rezepte-Ansicht sicher aufgebaut ist
       setTimeout(() => importRecipeFromUrl(), 300);

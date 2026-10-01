@@ -1,15 +1,19 @@
 // Teil von Skillet - siehe index.html für die anderen Module (shared.js, recipes.js, reflect.js, progress-history.js, init.js)
 
+  // Werte sicher in HTML-Attribute/Text schreiben (z. B. Zutaten mit Anführungszeichen)
+  function htmlSicher(wert) {
+    return String(wert ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   function addZutatRow(menge = '', einheit = '', name = '') {
     const container = document.getElementById('zutaten-rows');
     const row = document.createElement('div');
     row.className = 'zutat-row';
-    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:center;';
     row.innerHTML = `
-      <input type="number" step="any" placeholder="Menge" value="${menge ?? ''}" class="zutat-menge" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
-      <input type="text" placeholder="Einheit" value="${einheit ?? ''}" class="zutat-einheit" style="width:70px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
-      <input type="text" placeholder="Zutat" value="${name ?? ''}" class="zutat-name" style="flex:1; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">
-      <button type="button" onclick="this.parentElement.remove()" style="width:auto; padding:6px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;">×</button>
+      <input type="number" step="any" placeholder="Menge" value="${htmlSicher(menge)}" class="zutat-menge">
+      <input type="text" placeholder="Einheit" value="${htmlSicher(einheit)}" class="zutat-einheit">
+      <input type="text" placeholder="Zutat" value="${htmlSicher(name)}" class="zutat-name">
+      <button type="button" class="zeile-weg" onclick="this.parentElement.remove()" aria-label="Zutat entfernen">×</button>
     `;
     container.appendChild(row);
   }
@@ -32,14 +36,13 @@
     const container = document.getElementById('schritte-rows');
     const row = document.createElement('div');
     row.className = 'schritt-row';
-    row.style = 'display:flex; gap:6px; margin-bottom:6px; align-items:flex-start;';
     row.innerHTML = `
-      <span class="schritt-nr muted" style="padding-top:10px; width:22px; flex-shrink:0;"></span>
-      <textarea class="schritt-text" placeholder="Schritt beschreiben..." style="flex:1; min-height:50px; padding:8px; border-radius:6px; border:1px solid var(--border); font-family:inherit;">${text}</textarea>
-      <div style="display:flex; flex-direction:column; gap:2px;">
-        <button type="button" onclick="moveSchrittRow(this, -1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↑</button>
-        <button type="button" onclick="moveSchrittRow(this, 1)" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">↓</button>
-        <button type="button" onclick="this.closest('.schritt-row').remove(); renumberSchritte();" style="width:auto; padding:2px 8px; background:none; border:1px solid var(--border); border-radius:4px; cursor:pointer;">×</button>
+      <span class="schritt-nr"></span>
+      <textarea class="schritt-text" placeholder="Schritt beschreiben...">${htmlSicher(text)}</textarea>
+      <div class="schritt-knoepfe">
+        <button type="button" onclick="moveSchrittRow(this, -1)" aria-label="nach oben">↑</button>
+        <button type="button" onclick="moveSchrittRow(this, 1)" aria-label="nach unten">↓</button>
+        <button type="button" onclick="this.closest('.schritt-row').remove(); renumberSchritte();" aria-label="Schritt entfernen">×</button>
       </div>
     `;
     container.appendChild(row);
@@ -73,6 +76,31 @@
   }
 
 
+  // ---- Formular "Rezept hinzufügen" auf- und zuklappen (wie in Nest) ----
+  function oeffneRezeptFormular() {
+    document.getElementById('rezept-add-form').style.display = 'block';
+    document.getElementById('rezept-add-toggle').textContent = 'Formular schließen';
+  }
+
+  function schliesseRezeptFormular() {
+    document.getElementById('rezept-add-form').style.display = 'none';
+    document.getElementById('rezept-add-toggle').textContent = '+ Rezept hinzufügen';
+  }
+
+  function toggleRezeptFormular() {
+    const offen = document.getElementById('rezept-add-form').style.display === 'block';
+    if (offen) schliesseRezeptFormular(); else oeffneRezeptFormular();
+  }
+
+  // Bereich Rezepte öffnen, Formular aufklappen und hinscrollen -
+  // für Import, Freestyle, Diktat aus dem Kochmodus und Bearbeiten
+  function zeigeRezeptFormular() {
+    openSection('recipes');
+    oeffneRezeptFormular();
+    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // ---- Rezept von einer Webseite importieren ----
   let pendingImportUrl = null;
 
   async function importRecipeFromUrl() {
@@ -183,6 +211,7 @@
       document.getElementById('edit-mode-mengen-hinweis').textContent = '';
       editingCopyOf = null;
       pendingImportUrl = null;
+      schliesseRezeptFormular();
       statusLine.textContent = hinweisOriginalWeg
         ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
         : "Gespeichert! Erkenne verwendete Techniken...";
@@ -201,43 +230,6 @@
       statusLine.textContent = "Verbindungsfehler: " + e.message;
     }
     btn.disabled = false;
-  }
-
-  // ---- Freestyle: Rezept diktieren/tippen, unabhängig vom Kochmodus ----
-  async function extrahiereFreestyleRezept() {
-    const text = document.getElementById('freestyle-diktat-text').value.trim();
-    if (!text) return;
-    const statusEl = document.getElementById('freestyle-status');
-    statusEl.textContent = "Rezept wird erkannt...";
-
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-recipe-from-text`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
-      });
-      const data = await res.json();
-      if (data.error) { statusEl.textContent = "Fehler: " + data.error; return; }
-
-      document.getElementById('recipe-titel-input').value = data.titel || "";
-      document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
-
-      clearZutatenRows();
-      (data.zutatenStrukturiert || []).forEach(z => addZutatRow(z.menge, z.einheit, z.name));
-      if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
-
-      clearSchritteRows();
-      (data.anleitungSchritte || []).forEach(s => addSchrittRow(s));
-      if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
-
-      document.getElementById('freestyle-diktat-text').value = "";
-      statusEl.textContent = "";
-      openSection('recipes');
-      document.getElementById('recipe-status-line').textContent = "Bitte prüfen, dann unten speichern.";
-      document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch (e) {
-      statusEl.textContent = "Verbindungsfehler: " + e.message;
-    }
   }
 
   // ---- Original direkt aktualisieren (kein neues Rezept, kein Kopie-Verweis) ----
@@ -278,6 +270,7 @@
     document.getElementById('recipe-portionen-input').value = "";
     document.getElementById('edit-mode-banner').style.display = 'none';
     editingOriginalId = null;
+    schliesseRezeptFormular();
     statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
     loadRecipes();
 
@@ -338,7 +331,7 @@
         <div class="card">
           <div style="margin-bottom:10px;">Erkannte Techniken für <strong>${titel}</strong> – bitte prüfen:</div>
           ${techniques.map(t => `
-            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:0.92rem; cursor:pointer;">
+            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; margin:0; color:var(--ink); font-size:0.92rem; cursor:pointer;">
               <input type="checkbox" class="detect-checkbox" value="${t.id}" ${erkannt.has(t.id) ? 'checked' : ''}>
               ${t.name}
             </label>
@@ -420,12 +413,23 @@
     const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
 
     listEl.innerHTML = data.map(r => `
-      <div class="progress-item" style="align-items: flex-start; flex-direction: column; cursor:pointer;" onclick="toggleRecipeDetail('${r.id}')">
-        <div style="font-weight:600;">${r.titel}</div>
-        ${r.kopie_von && titelById[r.kopie_von] ? `<div class="muted" style="font-size:0.8rem;">Kopie von "${titelById[r.kopie_von]}"</div>` : ''}
-        <div id="recipe-detail-${r.id}" style="display:none; width:100%; margin-top:10px;" onclick="event.stopPropagation()"></div>
+      <div class="rezept-karte" onclick="toggleRecipeDetail('${r.id}')">
+        <div class="rezept-titel">${htmlSicher(r.titel)}</div>
+        <div class="rezept-meta">${htmlSicher(rezeptMeta(r, titelById))}</div>
+        <div id="recipe-detail-${r.id}" class="rezept-detail" style="display:none;" onclick="event.stopPropagation()"></div>
       </div>
     `).join('');
+  }
+
+  // Kurze Zusatzzeile unter dem Titel: Portionen, Herkunft
+  function rezeptMeta(r, titelById) {
+    const teile = [];
+    if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
+    if (r.kopie_von && titelById[r.kopie_von]) teile.push(`Kopie von „${titelById[r.kopie_von]}“`);
+    else if (r.quelle_url) {
+      try { teile.push('aus ' + new URL(r.quelle_url).hostname.replace(/^www\./, '')); } catch (e) {}
+    }
+    return teile.join(' · ');
   }
 
   // ---- Detail aufklappen/zuklappen ----
@@ -440,35 +444,42 @@
     const r = allRecipesCache.find(rec => rec.id === id);
     const hatStrukturierteZutaten = r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0 && r.basis_portionen;
     const nurPortionenOhneStruktur = r.basis_portionen && !hatStrukturierteZutaten;
+    const hatSchritte = r.anleitung_schritte && r.anleitung_schritte.length > 0;
 
     detailEl.innerHTML = `
-      <div style="border-top:1px solid var(--border); padding-top:10px;">
-        <div style="font-size:0.88rem; font-weight:600;">Zutaten</div>
-        ${hatStrukturierteZutaten
-          ? `<div style="display:flex; align-items:center; gap:10px; margin:6px 0;">
-               <span class="muted" style="font-size:0.85rem;">Portionen:</span>
-               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', -1)">-</button>
-               <span id="portionen-anzeige-${id}" style="font-weight:600;">${r.basis_portionen}</span>
-               <button style="width:auto; padding:2px 10px; background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer;" onclick="changePortionen('${id}', 1)">+</button>
-             </div>
-             <div class="muted" style="font-size:0.78rem; margin-bottom:4px;">Tipp: Du kannst auch direkt eine Zutaten-Menge unten ändern, um danach umzurechnen.</div>
-             <div id="zutaten-liste-${id}"></div>`
-          : `${nurPortionenOhneStruktur ? `<div class="muted" style="font-size:0.85rem; margin-bottom:4px;">Für ${r.basis_portionen} Portionen (keine automatische Mengenumrechnung, da Zutaten nicht strukturiert erfasst)</div>` : ''}
-             <div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.zutaten || '(keine Zutaten gespeichert)'}</div>`}
-        <div style="font-size:0.88rem; font-weight:600; margin-top:10px;">Anleitung</div>
-        ${r.anleitung_schritte && r.anleitung_schritte.length > 0
-          ? `<ol style="padding-left:20px; margin:0 0 10px;">${r.anleitung_schritte.map(s => `<li style="margin-bottom:6px;">${s}</li>`).join('')}</ol>`
-          : `<div class="muted" style="white-space:pre-wrap; margin-bottom:10px;">${r.anleitung || '(keine Anleitung gespeichert)'}</div>`}
-        <div style="font-size:0.88rem; font-weight:600;">Techniken</div>
-        <div id="recipe-techniques-${id}" class="muted">Lade...</div>
-        ${r.quelle_url ? `<div style="margin-top:8px;"><a href="${r.quelle_url}" target="_blank" style="color: var(--accent); font-size:0.85rem;">Quelle öffnen</a></div>` : ''}
+      <div class="abschnitt">Zutaten</div>
+      ${hatStrukturierteZutaten
+        ? `<div class="portion-steuerung">
+             <button class="mini-rund" onclick="changePortionen('${id}', -1)" aria-label="weniger Portionen">−</button>
+             <b id="portionen-anzeige-${id}">${r.basis_portionen}</b> Portionen
+             <button class="mini-rund" onclick="changePortionen('${id}', 1)" aria-label="mehr Portionen">+</button>
+           </div>
+           <div id="zutaten-liste-${id}"></div>
+           <div class="muted" style="font-size:0.78rem; margin-top:4px;">Tipp: Trag bei einer Zutat ein, wie viel du hast – der Rest rechnet sich mit.</div>`
+        : `${nurPortionenOhneStruktur ? `<div class="muted" style="margin-bottom:4px;">Für ${r.basis_portionen} Portionen</div>` : ''}
+           <div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.zutaten) || '<span class="muted">(keine Zutaten gespeichert)</span>'}</div>`}
+
+      <div class="abschnitt">Zubereitung</div>
+      ${hatSchritte
+        ? `<ol class="schritt-liste">${r.anleitung_schritte.map(s => `<li>${htmlSicher(s)}</li>`).join('')}</ol>`
+        : `<div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.anleitung) || '<span class="muted">(keine Anleitung gespeichert)</span>'}</div>`}
+
+      <div class="abschnitt">Techniken</div>
+      <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
+      ${r.quelle_url ? `<div style="margin-top:0.8rem;"><a href="${htmlSicher(r.quelle_url)}" target="_blank" rel="noopener" style="color: var(--accent); font-size:0.85rem;">Original-Rezept öffnen</a></div>` : ''}
+
+      <div class="aktionen">
+        <button class="btn-haupt nur-handy" onclick="startKochmodus('${id}')">Kochen</button>
+        <button class="btn-umriss" onclick="zeigeBearbeitenWahl('${id}')">Bearbeiten</button>
+      </div>
+      <div id="bearbeiten-wahl-${id}" style="display:none; margin-top:0.6rem;">
         <div id="reflexions-hinweis-${id}"></div>
-        <div style="display:flex; gap:6px; margin-top:14px;">
-          <button title="Original direkt ändern" onclick="startEditOriginal('${id}')" style="width:auto; flex:1; padding:8px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:0.85rem;">✏️ Original</button>
-          <button title="Als neue Kopie bearbeiten" onclick="startEditAsCopy('${id}')" style="width:auto; flex:1; padding:8px; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:0.85rem;">📄 Kopie</button>
-          <button title="Rezept löschen" onclick="deleteRecipe('${id}')" style="width:auto; padding:8px 12px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer; font-size:0.85rem;">🗑️</button>
+        <div class="aktionen" style="margin-top:0.4rem;">
+          <button class="btn-klein" onclick="startEditOriginal('${id}')">Original ändern</button>
+          <button class="btn-klein" onclick="startEditAsCopy('${id}')">Als Kopie</button>
         </div>
       </div>
+      <div class="zentriert"><button class="btn-dezent" onclick="deleteRecipe('${id}')">Löschen</button></div>
     `;
     detailEl.style.display = 'block';
     if (hatStrukturierteZutaten) {
@@ -476,7 +487,14 @@
       renderZutatenListe(id);
     }
     loadRecipeTechniquesForDetail(id);
-    warnFallsReflektiert(id);
+  }
+
+  // "Bearbeiten" fragt erst, ob Original oder Kopie - mit Hinweis, falls schon reflektiert
+  function zeigeBearbeitenWahl(id) {
+    const el = document.getElementById(`bearbeiten-wahl-${id}`);
+    const offen = el.style.display === 'block';
+    el.style.display = offen ? 'none' : 'block';
+    if (!offen) warnFallsReflektiert(id);
   }
 
   // ---- Portionen ändern und Zutatenliste neu berechnen ----
@@ -496,18 +514,16 @@
 
     listEl.innerHTML = r.zutaten_strukturiert.map(z => {
       if (z.menge === null || z.menge === undefined) {
-        return `<div class="kriterium"><span>${z.name}</span></div>`;
+        return `<div class="zutat-zeile"><span>${htmlSicher(z.name)}</span><span class="menge">${htmlSicher(z.einheit || '')}</span></div>`;
       }
       const neueMenge = z.menge * faktor;
       // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
       const anzeige = neueMenge < 10 ? Math.round(neueMenge * 10) / 10 : Math.round(neueMenge);
-      return `<div class="kriterium">
-        <span>${z.name}</span>
-        <span>
-          <input type="number" step="any" value="${anzeige}" data-basis="${z.menge}" data-id="${id}"
-            onchange="scaleByZutat(this)"
-            style="width:60px; padding:2px 4px; border-radius:4px; border:1px solid var(--border); text-align:right; font-family:inherit;">
-          ${z.einheit || ''}
+      return `<div class="zutat-zeile">
+        <span>${htmlSicher(z.name)}</span>
+        <span class="menge">
+          <input type="number" step="any" value="${anzeige}" data-basis="${z.menge}" data-id="${id}" onchange="scaleByZutat(this)" aria-label="Menge ${htmlSicher(z.name)}">
+          ${htmlSicher(z.einheit || '')}
         </span>
       </div>`;
     }).join('');
@@ -536,7 +552,9 @@
     );
     const rows = await res.json();
     const names = rows.map(r => r.techniques?.name).filter(Boolean);
-    el.textContent = names.length ? names.join(', ') : '(keine zugeordnet)';
+    el.innerHTML = names.length
+      ? names.map(n => `<span class="chip">${htmlSicher(n)}</span>`).join('')
+      : '<span class="muted">(keine zugeordnet)</span>';
   }
 
   // ---- Hinweis, falls das Rezept schon reflektiert wurde (Original-Änderung würde den Verlauf "veralten") ----
@@ -549,7 +567,7 @@
     );
     const rows = await res.json();
     if (rows.length > 0) {
-      el.innerHTML = `<div class="muted" style="font-size:0.78rem; margin-top:6px;">Dieses Rezept wurde bereits reflektiert - "Original" ändert den Text, dein Verlauf bleibt aber auf dem alten Stand stehen. Bei größeren Änderungen ist "Kopie" oft die klarere Wahl.</div>`;
+      el.innerHTML = `<div class="muted" style="font-size:0.8rem;">Schon reflektiert: Wenn du das Original änderst, bleibt dein Verlauf auf dem alten Stand. Bei größeren Änderungen ist eine Kopie klarer.</div>`;
     }
   }
 
@@ -587,8 +605,7 @@
     document.getElementById('edit-mode-text').innerHTML =
       `Du bearbeitest eine Kopie von "<span id="edit-mode-original-title">${r.titel}</span>". Wird als neues, eigenständiges Rezept gespeichert.`;
     document.getElementById('edit-mode-banner').style.display = 'block';
-    openSection('recipes');
-    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    zeigeRezeptFormular();
   }
 
   function startEditOriginal(id) {
@@ -600,8 +617,7 @@
     document.getElementById('edit-mode-text').innerHTML =
       `Du änderst "<span id="edit-mode-original-title">${r.titel}</span>" direkt - keine Kopie, das Original wird überschrieben.`;
     document.getElementById('edit-mode-banner').style.display = 'block';
-    openSection('recipes');
-    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    zeigeRezeptFormular();
   }
 
   function cancelEditCopy() {
@@ -612,6 +628,7 @@
     clearZutatenRows(); addZutatRow();
     clearSchritteRows(); addSchrittRow();
     document.getElementById('recipe-portionen-input').value = '';
+    schliesseRezeptFormular();
   }
 
   // ---- Rezept löschen ----

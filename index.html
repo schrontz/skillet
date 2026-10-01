@@ -14,78 +14,190 @@
     --ink: #2b2420;
     --muted: #786f64;
     --accent: #b5522f;
+    --accent-dark: #8f3f22;
     --accent-light: #f1d9cd;
+    --panel: #f3e3d8;
     --ok: #4a7c59;
     --warn: #c9973a;
     --border: #e6ded3;
+    --linie: #f1ebe3;
+    --schatten: 0 1px 2px rgba(0,0,0,0.06);
   }
+  html { scrollbar-gutter: stable; }
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--ink);
     margin: 0;
-    padding: 24px 16px 80px;
+    padding: 1.25rem 1rem 4rem;
     overflow-x: hidden;
   }
-  .wrap { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 1.5rem; margin-bottom: 4px; }
-  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.95rem; }
-  nav {
-    display: flex; gap: 2px; margin-bottom: 0;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-  }
-  nav button {
-    background: var(--card); border: none; padding: 10px 16px;
-    border-radius: 10px 10px 0 0;
-    font-size: 0.92rem; font-weight: 600; cursor: pointer; color: var(--muted);
-    white-space: nowrap; flex-shrink: 0;
-    box-shadow: 0 -1px 2px rgba(0,0,0,0.03);
-  }
-  nav button.active { background: var(--accent-light); color: var(--accent); }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  button { font-family: inherit; }
 
+  /* ---- Kopfzeilen: Start (Datum) und Bereich (zurück + Titel) ---- */
+  .kopf { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; }
+  .kopf-datum { flex: 1; color: var(--muted); font-size: 0.95rem; font-weight: 500; }
+  .kopf h2 { flex: 1; margin: 0; font-size: 1.3rem; color: var(--accent-dark); }
+  .rund-knopf {
+    flex: none; width: 2.6rem; height: 2.6rem; padding: 0; border: none; border-radius: 50%;
+    background: var(--card); color: var(--accent-dark); font-size: 1.3rem; line-height: 1;
+    display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); cursor: pointer;
+  }
+  .rund-knopf:hover { background: #f6eee7; }
+
+  /* ---- Startbildschirm: Kacheln ---- */
+  .gruppe-titel {
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); margin: 1rem 0 0.5rem;
+  }
+  .kachel-raster { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .kachel {
+    position: relative; display: flex; flex-direction: column; min-height: 7.5rem;
+    padding: 0.8rem; border: none; border-radius: 20px; text-align: left; color: var(--ink);
+    cursor: pointer; transition: transform 0.12s ease;
+  }
+  .kachel:active { transform: scale(0.97); }
+  .kachel-icon { font-size: 2rem; flex: 1; line-height: 1.1; }
+  .kachel-name { font-weight: 700; color: var(--accent-dark); font-size: 1rem; }
+  /* Immer Platz für zwei Zeilen, damit die Namen in einer Reihe gleich hoch stehen */
+  .kachel-info {
+    font-size: 0.8rem; color: #5d544b; margin-top: 0.15rem; line-height: 1.35; min-height: 2.7em;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .kachel-breit { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 0.8rem; min-height: 5.5rem; }
+  .kachel-breit .kachel-icon { flex: none; }
+  .kachel-text { display: flex; flex-direction: column; min-width: 0; }
+  .kachel-zahl {
+    position: absolute; top: 0.65rem; right: 0.65rem; min-width: 1.6rem; height: 1.6rem; padding: 0 0.45rem;
+    border-radius: 1rem; background: var(--accent); color: #fff; font-size: 0.82rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  .k-rezepte { background: #f6e2d6; } .k-kochmodus { background: #f3e7d3; } .k-freestyle { background: #f7ecdc; }
+  .k-reflect { background: #e9ecdf; } .k-progress { background: #e6ece6; } .k-history { background: #ece7df; }
+
+  /* ---- Bereiche ---- */
   .tab-panel {
-    background: var(--accent-light);
-    border-radius: 0 12px 12px 12px;
-    padding: 18px 14px 20px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-    margin-bottom: 24px;
+    background: var(--panel); border-radius: 14px; padding: 1rem 0.8rem 1.2rem;
+    box-shadow: var(--schatten); margin-bottom: 1.5rem;
+  }
+  .card {
+    background: var(--card); border-radius: 10px; padding: 1rem 0.9rem;
+    margin-bottom: 0.7rem; box-shadow: var(--schatten);
+  }
+  .add-toggle {
+    display: block; width: 100%; background: var(--card); color: var(--accent-dark); border: none;
+    border-radius: 10px; padding: 0.75rem; font-size: 0.95rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; box-shadow: var(--schatten); cursor: pointer; margin-bottom: 0.7rem;
+  }
+  .add-toggle:hover { background: #fdfaf7; }
+  .abschnitt {
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--muted); margin: 1rem 0 0.4rem;
+  }
+  .abschnitt:first-child { margin-top: 0; }
+
+  /* ---- Formularelemente ---- */
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%; padding: 0.6rem 0.7rem; border-radius: 8px; border: 1px solid var(--border);
+    font-size: 1rem; font-family: inherit; background: var(--card); color: var(--ink);
+  }
+  textarea { min-height: 100px; resize: vertical; }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin: 0.9rem 0 0.3rem; }
+  label:first-child { margin-top: 0; }
+
+  /* ---- Drei Knopf-Arten ---- */
+  button.primary, .btn-haupt {
+    width: 100%; padding: 0.65rem 0.9rem; border-radius: 8px; border: none; background: var(--accent);
+    color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 0.9rem;
+  }
+  button.primary:disabled, .btn-haupt:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-umriss {
+    padding: 0.55rem 0.9rem; border-radius: 8px; border: 1.5px solid var(--accent); background: none;
+    color: var(--accent); font-size: 0.95rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-dezent {
+    padding: 0.4rem 0.2rem; border: none; background: none; color: var(--muted); font-size: 0.85rem;
+    text-decoration: underline; cursor: pointer;
+  }
+  .btn-klein {
+    padding: 0.35rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card);
+    color: var(--ink); font-size: 0.85rem; cursor: pointer;
   }
 
-  /* Kochmodus ist als Küchen-Begleiter fürs Handy gedacht - auf breiten Bildschirmen ausblenden.
-     Rezepte/Freestyle bleiben unter "Kochen" auch auf dem Desktop nutzbar. */
-  @media (min-width: 700px) {
-    #header-kochmodus, #view-kochmodus, #kochmodus-overlay { display: none !important; }
+  /* ---- Rezept-Formular: Zeilen ---- */
+  .zutat-row { display: flex; gap: 0.35rem; margin-bottom: 0.4rem; align-items: center; }
+  .zutat-row input { min-width: 0; padding: 0.5rem; font-size: 0.95rem; }
+  .zutat-row .zutat-menge { flex: 0 0 3.6rem; }
+  .zutat-row .zutat-einheit { flex: 0 0 3.8rem; }
+  .zutat-row .zutat-name { flex: 1 1 auto; }
+  /* Schmale Handys: Zutat oben über die ganze Breite, Menge und Einheit darunter -
+     sonst bleiben für den Namen nur ein paar Buchstaben */
+  @media (max-width: 420px) {
+    .zutat-row {
+      display: grid; grid-template-columns: 1fr 1fr 2rem; gap: 0.3rem;
+      padding-bottom: 0.45rem; margin-bottom: 0.45rem; border-bottom: 1px solid var(--linie);
+    }
+    .zutat-row .zutat-name { grid-column: 1 / 3; grid-row: 1; }
+    .zutat-row .zeile-weg { grid-column: 3; grid-row: 1; }
+    .zutat-row .zutat-menge { grid-column: 1; grid-row: 2; }
+    .zutat-row .zutat-einheit { grid-column: 2; grid-row: 2; }
   }
-  @keyframes alarmBlink {
-    0%, 100% { background-color: #1a1512; }
-    50% { background-color: var(--accent); }
+  .zeile-weg {
+    flex: none; width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--card); color: var(--muted); cursor: pointer;
   }
-  .kochmodus-alarm { animation: alarmBlink 1s infinite; }
-  .card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  .schritt-row { display: flex; gap: 0.35rem; margin-bottom: 0.4rem; align-items: flex-start; }
+  .schritt-row textarea { flex: 1; min-width: 0; min-height: 3.2rem; padding: 0.5rem; font-size: 0.95rem; }
+  .schritt-nr { padding-top: 0.6rem; width: 1.4rem; flex: none; color: var(--muted); font-size: 0.9rem; }
+  .schritt-knoepfe { display: flex; flex-direction: column; gap: 2px; }
+  .schritt-knoepfe button {
+    width: 2rem; height: 1.6rem; padding: 0; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--card); color: var(--muted); cursor: pointer;
   }
-  select, textarea, button.primary {
-    width: 100%; padding: 10px 12px; border-radius: 8px;
-    border: 1px solid var(--border); font-size: 1rem; font-family: inherit;
+  .edit-banner { background: var(--accent-light); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; font-size: 0.9rem; }
+
+  /* ---- Rezeptliste und Detail ---- */
+  .rezept-karte {
+    background: var(--card); border-radius: 10px; padding: 0.75rem 0.9rem; margin-bottom: 0.5rem;
+    box-shadow: var(--schatten); cursor: pointer;
   }
-  textarea { min-height: 100px; resize: vertical; margin-top: 10px; }
-  button.primary {
-    background: var(--accent); color: white; border: none;
-    margin-top: 14px; cursor: pointer; font-weight: 600;
+  .rezept-titel { font-weight: 600; overflow-wrap: anywhere; }
+  .rezept-meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+  .rezept-detail { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); cursor: default; }
+  .portion-steuerung { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.3rem; }
+  .mini-rund {
+    width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: var(--bg);
+    color: var(--accent-dark); font-size: 1.1rem; display: grid; place-items: center; cursor: pointer;
   }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
-  .kriterium { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--border); }
+  .zutat-zeile {
+    display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+    padding: 0.35rem 0; font-size: 0.92rem; border-bottom: 1px solid var(--linie);
+  }
+  .zutat-zeile:last-child { border-bottom: none; }
+  .zutat-zeile .menge { color: var(--muted); white-space: nowrap; }
+  .zutat-zeile input {
+    width: 3.6rem; padding: 0.2rem 0.3rem; text-align: right; font-size: 0.9rem; border-radius: 4px;
+  }
+  .schritt-liste { padding-left: 1.2rem; margin: 0; font-size: 0.92rem; line-height: 1.45; }
+  .schritt-liste li { margin-bottom: 0.35rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .chip { background: var(--bg); border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.8rem; }
+  .aktionen { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  .aktionen > button { flex: 1; margin-top: 0; }
+  .zentriert { text-align: center; }
+
+  /* ---- Bewertungen, Fortschritt, Verlauf (bestehend) ---- */
+  .kriterium { display: flex; justify-content: space-between; gap: 0.5rem; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--linie); }
   .kriterium:last-child { border-bottom: none; }
-  .badge { padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
+  .badge { padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
   .badge.erfuellt { background: #dcece0; color: var(--ok); }
   .badge.unklar { background: #f5ecd8; color: var(--warn); }
   .badge.nicht_erfuellt { background: #f4dcd6; color: var(--accent); }
   .fehler-liste { background: #fdf4ef; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 0.9rem; }
   .rueckfrage-box { background: var(--accent-light); border-radius: 8px; padding: 14px; margin-top: 14px; }
-  .progress-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .progress-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linie); }
   .progress-item:last-child { border-bottom: none; }
   .level-dots { display: flex; gap: 4px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
@@ -93,137 +205,162 @@
   .muted { color: var(--muted); font-size: 0.85rem; }
   .status-line { margin-top: 10px; font-size: 0.9rem; color: var(--muted); }
 
-  .accordion-item { margin-bottom: 10px; }
-  .accordion-header {
-    width: 100%; text-align: left; padding: 12px 16px;
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    font-weight: 600; font-size: 1rem; cursor: pointer; color: var(--ink);
-    display: flex; justify-content: space-between; align-items: center;
+  /* ---- Kochmodus ---- */
+  @keyframes alarmBlink {
+    0%, 100% { background-color: #1a1512; }
+    50% { background-color: var(--accent); }
   }
-  .accordion-header::after { content: '▸'; color: var(--muted); font-weight: normal; }
-  .accordion-header.active { background: var(--accent); color: white; border-color: var(--accent); }
-  .accordion-header.active::after { content: '▾'; color: white; }
-  .accordion-body { padding-top: 12px; }
+  .kochmodus-alarm { animation: alarmBlink 1s infinite; }
+  /* Der Kochmodus ist als Küchen-Begleiter fürs Handy gedacht - auf breiten Bildschirmen ausblenden */
+  @media (min-width: 700px) {
+    #kachel-kochmodus, #view-kochmodus, #kochmodus-overlay, .nur-handy { display: none !important; }
+    #kachel-freestyle { grid-column: 1 / -1; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🍳 Skillet</h1>
-  <div class="subtitle">Koch-Skills reflektieren und wachsen sehen</div>
 
-  <nav>
-    <button id="cat-kochen" class="active" onclick="openSection('recipes')">🍳 Kochen</button>
-    <button id="cat-lernen" onclick="openSection('reflect')">🧠 Lernen</button>
-  </nav>
-
-  <!-- KATEGORIE: KOCHEN -->
-  <div id="category-kochen" class="tab-panel">
-    <div class="accordion-item">
-      <button class="accordion-header active" id="header-recipes" onclick="openSection('recipes')">Rezepte</button>
-      <div id="view-recipes" class="accordion-body">
-    <div class="card">
-      <label for="import-url-input">Von URL importieren</label>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <input type="text" id="import-url-input" placeholder="https://..."
-          style="flex:1; min-width:0; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
-        <button class="primary" style="width:auto; flex-shrink:0; padding:10px 18px; margin-top:0;" onclick="importRecipeFromUrl()">Importieren</button>
-      </div>
-      <div class="status-line" id="import-status-line"></div>
+  <!-- STARTBILDSCHIRM: Kacheln, Texte füllt start.js -->
+  <div id="start-view" style="display:none;">
+    <div class="kopf">
+      <span class="kopf-datum" id="start-datum"></span>
     </div>
 
-    <div class="card">
-      <div id="edit-mode-banner" style="display:none; background: var(--accent-light); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:0.9rem;">
-        <span id="edit-mode-text">Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.</span>
-        <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
-        <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent); margin-left:8px;">Abbrechen</a>
+    <div class="gruppe-titel">Kochen</div>
+    <div class="kachel-raster">
+      <button type="button" class="kachel kachel-breit k-rezepte" id="kachel-recipes" onclick="openSection('recipes')">
+        <span class="kachel-zahl" id="kachel-zahl-recipes" style="display:none;"></span>
+        <span class="kachel-icon">📖</span>
+        <span class="kachel-text"><span class="kachel-name">Rezepte</span><span class="kachel-info" id="kachel-info-recipes"></span></span>
+      </button>
+      <button type="button" class="kachel k-kochmodus" id="kachel-kochmodus" onclick="openSection('kochmodus')">
+        <span class="kachel-icon">🔥</span>
+        <span class="kachel-name">Kochmodus</span><span class="kachel-info" id="kachel-info-kochmodus">Schritt für Schritt am Herd</span>
+      </button>
+      <button type="button" class="kachel k-freestyle" id="kachel-freestyle" onclick="openSection('freestyle')">
+        <span class="kachel-zahl" id="kachel-zahl-freestyle" style="display:none;"></span>
+        <span class="kachel-icon">🎙️</span>
+        <span class="kachel-name">Freestyle</span><span class="kachel-info" id="kachel-info-freestyle"></span>
+      </button>
+    </div>
+
+    <div class="gruppe-titel">Lernen</div>
+    <div class="kachel-raster">
+      <button type="button" class="kachel kachel-breit k-reflect" id="kachel-reflect" onclick="openSection('reflect')">
+        <span class="kachel-icon">💬</span>
+        <span class="kachel-text"><span class="kachel-name">Reflektieren</span><span class="kachel-info">Was hast du heute gekocht?</span></span>
+      </button>
+      <button type="button" class="kachel k-progress" id="kachel-progress" onclick="openSection('progress')">
+        <span class="kachel-icon">📈</span>
+        <span class="kachel-name">Fortschritt</span><span class="kachel-info" id="kachel-info-progress"></span>
+      </button>
+      <button type="button" class="kachel k-history" id="kachel-history" onclick="openSection('history')">
+        <span class="kachel-icon">🗂️</span>
+        <span class="kachel-name">Verlauf</span><span class="kachel-info" id="kachel-info-history"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- KOPFZEILE IN JEDEM BEREICH -->
+  <div id="bereich-kopf" class="kopf" style="display:none;">
+    <button type="button" class="rund-knopf" onclick="zeigeStart()" aria-label="Zurück zum Start">‹</button>
+    <h2 id="bereich-titel"></h2>
+  </div>
+
+  <!-- REZEPTE -->
+  <div id="view-recipes" class="tab-panel" style="display:none;">
+    <button type="button" class="add-toggle" id="rezept-add-toggle" onclick="toggleRezeptFormular()">+ Rezept hinzufügen</button>
+    <div id="rezept-add-form" style="display:none;">
+      <div class="card">
+        <label for="import-url-input">Von einer Webseite importieren</label>
+        <div style="display:flex; gap:0.5rem;">
+          <input type="text" id="import-url-input" placeholder="https://..." style="flex:1; min-width:0;">
+          <button class="btn-umriss" style="flex-shrink:0;" onclick="importRecipeFromUrl()">Laden</button>
+        </div>
+        <div class="status-line" id="import-status-line"></div>
       </div>
-      <label for="recipe-titel-input">Titel</label>
-      <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck"
-        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
 
-      <label style="margin-top:14px;">Zutaten</label>
-      <div id="zutaten-rows"></div>
-      <button type="button" onclick="addZutatRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Zutat hinzufügen</button>
+      <div class="card">
+        <div id="edit-mode-banner" class="edit-banner" style="display:none;">
+          <span id="edit-mode-text">Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.</span>
+          <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
+          <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent);">Abbrechen</a>
+        </div>
+        <label for="recipe-titel-input">Titel</label>
+        <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck">
 
-      <label style="margin-top:14px;">Portionen (optional, für Mengenumrechnung)</label>
-      <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4"
-        style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+        <label>Zutaten</label>
+        <div id="zutaten-rows"></div>
+        <button type="button" class="btn-klein" onclick="addZutatRow()">+ Zutat</button>
 
-      <label style="margin-top:14px;">Anleitung</label>
-      <div id="schritte-rows"></div>
-      <button type="button" onclick="addSchrittRow()" style="width:auto; padding:6px 14px; font-size:0.85rem; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; margin-top:4px;">+ Schritt hinzufügen</button>
+        <label for="recipe-portionen-input">Portionen (für die Mengenumrechnung)</label>
+        <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4">
 
-      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:18px;">Rezept speichern</button>
-      <div class="status-line" id="recipe-status-line"></div>
+        <label>Zubereitung</label>
+        <div id="schritte-rows"></div>
+        <button type="button" class="btn-klein" onclick="addSchrittRow()">+ Schritt</button>
+
+        <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:1.2rem;">Rezept speichern</button>
+        <div class="status-line" id="recipe-status-line"></div>
+      </div>
     </div>
 
     <div id="detect-card"></div>
+    <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
+  </div>
 
-    <div class="card">
-      <div class="muted" style="margin-bottom:10px;">Deine Rezepte</div>
-      <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
-    </div>
-      </div>
-    </div>
-    <div class="accordion-item">
-      <button class="accordion-header" id="header-kochmodus" onclick="openSection('kochmodus')">Kochmodus</button>
-      <div id="view-kochmodus" class="accordion-body" style="display:none;">
+  <!-- KOCHMODUS: START -->
+  <div id="view-kochmodus" class="tab-panel" style="display:none;">
     <div class="card" id="kochmodus-start">
       <div style="margin-bottom:10px; font-weight:600;">Nach Rezept kochen?</div>
-      <div style="display:flex; gap:8px; margin-bottom:14px;">
-        <button onclick="kochmodusMitRezept(true)" style="width:auto; flex:1; padding:10px; border-radius:8px; border:1px solid var(--border); background:none; cursor:pointer;">Ja</button>
-        <button onclick="kochmodusMitRezept(false)" style="width:auto; flex:1; padding:10px; border-radius:8px; border:1px solid var(--border); background:none; cursor:pointer;">Nein, frei kochen</button>
+      <div class="aktionen" style="margin-top:0;">
+        <button class="btn-umriss" onclick="kochmodusMitRezept(true)">Ja</button>
+        <button class="btn-umriss" onclick="kochmodusMitRezept(false)">Nein, frei kochen</button>
       </div>
       <div id="kochmodus-rezept-auswahl" style="display:none;">
         <label for="kochmodus-recipe-select">Rezept</label>
         <select id="kochmodus-recipe-select"></select>
       </div>
-      <button class="primary" style="margin-top:14px;" onclick="startKochmodus()">Kochmodus starten</button>
-    </div>
-      </div>
-    </div>
-    <div class="accordion-item">
-      <button class="accordion-header" id="header-freestyle" onclick="openSection('freestyle')">Freestyle</button>
-      <div id="view-freestyle" class="accordion-body" style="display:none;">
-    <div class="card">
-      <div style="margin-bottom:6px; font-weight:600;">Schritt für Schritt diktieren</div>
-      <div class="muted" style="margin-bottom:10px; font-size:0.85rem;">Sag einfach, was du gerade machst oder reintust – ein Schritt nach dem anderen. Am Ende wird daraus ein Rezept. Die Schritte bleiben auf diesem Gerät gespeichert, du kannst die App zwischendurch schließen.</div>
-      <div id="freestyle-schnipsel-liste"></div>
-      <textarea id="freestyle-schnipsel-input" placeholder="z. B. Zwei Zwiebeln klein geschnitten und in Butter angeschwitzt" style="min-height:70px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box; margin-top:8px;"></textarea>
-      <button type="button" onclick="addFreestyleSchnipsel()" style="width:100%; padding:10px; margin-top:6px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer; font-weight:600;">+ Schritt hinzufügen</button>
-      <button class="primary" id="freestyle-zusammensetzen-btn" style="margin-top:14px;" onclick="setzeFreestyleRezeptZusammen()">Rezept zusammensetzen</button>
-      <button type="button" onclick="neuAnfangenFreestyle()" style="width:100%; padding:8px; margin-top:6px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.85rem;">Neu anfangen (alle Schritte löschen)</button>
-      <div class="status-line" id="freestyle-status"></div>
-    </div>
-      </div>
+      <button class="primary" onclick="startKochmodus()">Kochmodus starten</button>
     </div>
   </div>
 
-  <!-- KATEGORIE: LERNEN -->
-  <div id="category-lernen" class="tab-panel" style="display:none;">
-    <div class="accordion-item">
-      <button class="accordion-header active" id="header-reflect" onclick="openSection('reflect')">Reflektieren</button>
-      <div id="view-reflect" class="accordion-body">
+  <!-- FREESTYLE: SCHRITT FÜR SCHRITT DIKTIEREN -->
+  <div id="view-freestyle" class="tab-panel" style="display:none;">
+    <div class="card">
+      <div style="margin-bottom:6px; font-weight:600;">Schritt für Schritt diktieren</div>
+      <div class="muted" style="margin-bottom:10px;">Sag einfach, was du gerade machst oder reintust – ein Schritt nach dem anderen. Am Ende wird daraus ein Rezept. Die Schritte bleiben auf diesem Gerät gespeichert, du kannst die App zwischendurch schließen.</div>
+      <div id="freestyle-schnipsel-liste"></div>
+      <textarea id="freestyle-schnipsel-input" placeholder="z. B. Zwei Zwiebeln klein geschnitten und in Butter angeschwitzt" style="min-height:70px; margin-top:8px;"></textarea>
+      <button type="button" class="btn-umriss" style="width:100%; margin-top:6px;" onclick="addFreestyleSchnipsel()">+ Schritt hinzufügen</button>
+      <button class="primary" id="freestyle-zusammensetzen-btn" onclick="setzeFreestyleRezeptZusammen()">Rezept zusammensetzen</button>
+      <div class="zentriert"><button type="button" class="btn-dezent" onclick="neuAnfangenFreestyle()">Neu anfangen (alle Schritte löschen)</button></div>
+      <div class="status-line" id="freestyle-status"></div>
+    </div>
+  </div>
+
+  <!-- REFLEKTIEREN -->
+  <div id="view-reflect" class="tab-panel" style="display:none;">
     <div class="card">
       <label for="reflect-recipe-select">Rezept (optional)</label>
       <select id="reflect-recipe-select" onchange="onReflectRecipeChange()">
         <option value="">Kein Rezept / freie Auswahl</option>
       </select>
 
-      <div id="technique-select-wrapper" style="margin-top:14px;">
+      <div id="technique-select-wrapper">
         <label for="technique-select">Technik</label>
         <select id="technique-select" onchange="onTechniqueSelectChange()">
           <option value="">Automatisch erkennen lassen</option>
         </select>
       </div>
 
-      <div id="auto-titel-wrapper" style="margin-top:14px;">
+      <div id="auto-titel-wrapper">
         <label for="auto-titel-input">Titel (optional, nur falls kein Rezept gewählt)</label>
-        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht"
-          style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); font-size:1rem; font-family:inherit;">
+        <input type="text" id="auto-titel-input" placeholder="z. B. Spontan gekocht">
       </div>
 
-      <label style="margin-top:14px;">Was hast du gemacht?</label>
+      <label for="beschreibung">Was hast du gemacht?</label>
       <textarea id="beschreibung" placeholder="Beschreibe, was du gemacht und beobachtet hast..."></textarea>
 
       <button class="primary" id="submit-btn" onclick="submitReflection()">Absenden</button>
@@ -232,25 +369,20 @@
 
     <div id="auto-detect-info" class="muted" style="padding:0 4px;"></div>
     <div id="reflect-vorschlag-card"></div>
-
     <div id="result-card"></div>
-      </div>
-    </div>
-    <div class="accordion-item">
-      <button class="accordion-header" id="header-progress" onclick="openSection('progress')">Fortschritt</button>
-      <div id="view-progress" class="accordion-body" style="display:none;">
+  </div>
+
+  <!-- FORTSCHRITT -->
+  <div id="view-progress" class="tab-panel" style="display:none;">
     <div class="card" id="progress-list">
       <div class="muted">Lade Fortschritt...</div>
     </div>
-      </div>
-    </div>
-    <div class="accordion-item">
-      <button class="accordion-header" id="header-history" onclick="openSection('history')">Verlauf</button>
-      <div id="view-history" class="accordion-body" style="display:none;">
+  </div>
+
+  <!-- VERLAUF -->
+  <div id="view-history" class="tab-panel" style="display:none;">
     <div class="card" id="history-list">
       <div class="muted">Lade Verlauf...</div>
-    </div>
-      </div>
     </div>
   </div>
 </div>
@@ -264,6 +396,7 @@
 <script src="progress-history.js"></script>
 <script src="kochmodus.js"></script>
 <script src="freestyle.js"></script>
+<script src="start.js"></script>
 <script src="init.js"></script>
 </body>
 </html>

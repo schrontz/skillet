@@ -6,14 +6,10 @@
 
   let techniques = [];
 
-  // ---- Zwei-Ebenen-Navigation: Kategorie (Kochen/Lernen) + Akkordeon-Unterbereich ----
-  const SECTION_CATEGORY = {
-    recipes: 'kochen', kochmodus: 'kochen', freestyle: 'kochen',
-    reflect: 'lernen', progress: 'lernen', history: 'lernen'
-  };
-  const CATEGORY_SECTIONS = {
-    kochen: ['recipes', 'kochmodus', 'freestyle'],
-    lernen: ['reflect', 'progress', 'history']
+  // ---- Navigation wie in Nest: Startbildschirm mit Kacheln, je Bereich eine eigene Ansicht ----
+  const SECTION_TITLES = {
+    recipes: 'Rezepte', kochmodus: 'Kochmodus', freestyle: 'Freestyle',
+    reflect: 'Reflektieren', progress: 'Fortschritt', history: 'Verlauf'
   };
   const SECTION_LOADERS = {
     recipes: () => loadRecipes(),
@@ -24,26 +20,34 @@
   };
 
   function openSection(section) {
-    const category = SECTION_CATEGORY[section];
-    if (!category) return;
+    if (!SECTION_TITLES[section]) return;
 
-    document.getElementById('category-kochen').style.display = category === 'kochen' ? 'block' : 'none';
-    document.getElementById('category-lernen').style.display = category === 'lernen' ? 'block' : 'none';
-    document.getElementById('cat-kochen').classList.toggle('active', category === 'kochen');
-    document.getElementById('cat-lernen').classList.toggle('active', category === 'lernen');
-
-    CATEGORY_SECTIONS[category].forEach(s => {
-      const body = document.getElementById('view-' + s);
-      const header = document.getElementById('header-' + s);
-      if (body) body.style.display = s === section ? 'block' : 'none';
-      if (header) header.classList.toggle('active', s === section);
+    document.getElementById('start-view').style.display = 'none';
+    document.getElementById('bereich-kopf').style.display = 'flex';
+    document.getElementById('bereich-titel').textContent = SECTION_TITLES[section];
+    Object.keys(SECTION_TITLES).forEach(s => {
+      const view = document.getElementById('view-' + s);
+      if (view) view.style.display = s === section ? 'block' : 'none';
     });
 
     if (SECTION_LOADERS[section]) SECTION_LOADERS[section]();
+    window.scrollTo(0, 0);
 
     try { localStorage.setItem('skillet_active_section', section); } catch (e) { /* localStorage evtl. nicht verfügbar - kein Beinbruch */ }
   }
 
+  function zeigeStart() {
+    Object.keys(SECTION_TITLES).forEach(s => {
+      const view = document.getElementById('view-' + s);
+      if (view) view.style.display = 'none';
+    });
+    document.getElementById('bereich-kopf').style.display = 'none';
+    document.getElementById('start-view').style.display = 'block';
+    window.scrollTo(0, 0);
+    if (typeof ladeKachelInfos === 'function') ladeKachelInfos();
+
+    try { localStorage.setItem('skillet_active_section', 'start'); } catch (e) {}
+  }
 
   async function loadTechniques() {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/techniques?select=id,name,kurzbeschreibung,kernkriterien,typische_fehler,root_kategorie&order=name.asc`, {
