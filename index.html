@@ -186,10 +186,13 @@
       <button class="accordion-header" id="header-freestyle" onclick="openSection('freestyle')">Freestyle</button>
       <div id="view-freestyle" class="accordion-body" style="display:none;">
     <div class="card">
-      <div style="margin-bottom:8px; font-weight:600;">Rezept diktieren oder tippen</div>
-      <div class="muted" style="margin-bottom:8px; font-size:0.85rem;">Was hast du reingetan, wie viel, in welcher Reihenfolge? (Mikrofon-Taste deiner Tastatur nutzen)</div>
-      <textarea id="freestyle-diktat-text" style="min-height:120px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box;"></textarea>
-      <button class="primary" style="margin-top:10px;" onclick="extrahiereFreestyleRezept()">Rezept erstellen</button>
+      <div style="margin-bottom:6px; font-weight:600;">Schritt für Schritt diktieren</div>
+      <div class="muted" style="margin-bottom:10px; font-size:0.85rem;">Sag einfach, was du gerade machst oder reintust – ein Schritt nach dem anderen. Am Ende wird daraus ein Rezept. Die Schritte bleiben auf diesem Gerät gespeichert, du kannst die App zwischendurch schließen.</div>
+      <div id="freestyle-schnipsel-liste"></div>
+      <textarea id="freestyle-schnipsel-input" placeholder="z. B. Zwei Zwiebeln klein geschnitten und in Butter angeschwitzt" style="min-height:70px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box; margin-top:8px;"></textarea>
+      <button type="button" onclick="addFreestyleSchnipsel()" style="width:100%; padding:10px; margin-top:6px; background:none; border:1px solid var(--accent); color:var(--accent); border-radius:8px; cursor:pointer; font-weight:600;">+ Schritt hinzufügen</button>
+      <button class="primary" id="freestyle-zusammensetzen-btn" style="margin-top:14px;" onclick="setzeFreestyleRezeptZusammen()">Rezept zusammensetzen</button>
+      <button type="button" onclick="neuAnfangenFreestyle()" style="width:100%; padding:8px; margin-top:6px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.85rem;">Neu anfangen (alle Schritte löschen)</button>
       <div class="status-line" id="freestyle-status"></div>
     </div>
       </div>
@@ -260,6 +263,7 @@
 <script src="reflect.js"></script>
 <script src="progress-history.js"></script>
 <script src="kochmodus.js"></script>
+<script src="freestyle.js"></script>
 <script src="init.js"></script>
 </body>
 </html>
