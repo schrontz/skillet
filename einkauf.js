@@ -7,19 +7,25 @@
 
 const NEST_URL = 'https://schrontz.github.io/nest/';
 
-// Einheiten, die Nest kennt (g, kg, ml, l, Stück, Packung) - so geschrieben,
-// wie Nests Einheiten-Wörterbuch sie erkennt
+// Einheiten, die Nest kennt - so geschrieben, wie Nests Einheiten-Wörterbuch
+// sie erkennt. Seit Okt. 2026 auch Dose, Bund, Glas, Flasche, Becher.
 const NEST_EINHEITEN = {
   g: 'g', gr: 'g', gramm: 'g',
   kg: 'kg', kilo: 'kg', kilogramm: 'kg',
   ml: 'ml', milliliter: 'ml',
   l: 'l', liter: 'l',
   'stück': 'Stück', stueck: 'Stück', stk: 'Stück', st: 'Stück',
-  packung: 'Packung', packungen: 'Packung', 'päckchen': 'Packung', pck: 'Packung'
+  packung: 'Packung', packungen: 'Packung', 'päckchen': 'Packung', pck: 'Packung',
+  dose: 'Dose', dosen: 'Dose', bund: 'Bund', glas: 'Glas', 'gläser': 'Glas',
+  flasche: 'Flasche', flaschen: 'Flasche', becher: 'Becher'
 };
 
-// Gebinde, die man so kauft: Menge und Wort bleiben stehen ("1 Dose Tomaten")
-const GEBINDE = ['dose', 'dosen', 'glas', 'gläser', 'bund', 'flasche', 'flaschen', 'becher', 'tüte', 'tüten', 'netz', 'knolle', 'knollen'];
+// Was man stückweise kauft: Mengen werden aufgerundet (1,2 Dosen -> 2 Dose)
+const GANZE_EINHEITEN = ['Stück', 'Packung', 'Dose', 'Bund', 'Glas', 'Flasche', 'Becher'];
+
+// Weitere Gebinde, die Nest nicht als Einheit kennt: Menge und Wort bleiben im
+// Namen stehen ("1 Netz Zwiebeln")
+const GEBINDE = ['tüte', 'tüten', 'netz', 'knolle', 'knollen'];
 
 // Kocheinheiten, die man nicht kauft: nur den Namen schicken ("2 EL Paprika" -> "Paprika")
 // Alles andere Unbekannte landet ebenfalls nur mit dem Namen auf der Liste.
@@ -45,8 +51,8 @@ function nestZeile(z, faktor) {
   const ganz = einkaufZahl(Math.ceil(z.menge * faktor - 0.001));
 
   if (!einheit) return `${ganz} ${name}`;
-  if (NEST_EINHEITEN[einheit] === 'Stück') return `${ganz} Stück ${name}`;
-  if (NEST_EINHEITEN[einheit]) return `${menge} ${NEST_EINHEITEN[einheit]} ${name}`;
+  const nestEinheit = NEST_EINHEITEN[einheit];
+  if (nestEinheit) return `${GANZE_EINHEITEN.includes(nestEinheit) ? ganz : menge} ${nestEinheit} ${name}`;
   if (GEBINDE.includes(einheit)) return `${ganz} ${z.einheit.trim()} ${name}`;
   return name;
 }
