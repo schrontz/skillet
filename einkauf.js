@@ -1,8 +1,8 @@
 // Teil von Skillet - Einkaufsliste: Zutaten eines Rezepts an Nest übergeben
 //
 // Skillet schreibt NICHT selbst in Nests Datenbank. Es baut nur einen Link
-// mit einer Zutat pro Zeile. Nest öffnet damit sein Feld "mehrere auf einmal",
-// und du bestätigst dort mit deinem Nest-Login. Das Format der Zeilen ist
+// mit einer Zutat pro Zeile. Nest öffnet damit eine Karte je Zutat, und du
+// bestätigst dort mit deinem Nest-Login. Das Format der Zeilen ist
 // deshalb genau das, was Nests Zeilen-Erkennung versteht: "500 g Mehl".
 
 const NEST_URL = 'https://schrontz.github.io/nest/';
@@ -131,7 +131,7 @@ function sendeAnNest(id) {
   const r = allRecipesCache.find(rec => rec.id === id);
   const link = `${NEST_URL}?einkauf=${encodeURIComponent(zeilen.join('\n'))}&rezept=${encodeURIComponent(r.titel)}`;
   window.open(link, '_blank', 'noopener');
-  status.textContent = 'Nest ist geöffnet – dort prüfen und "Auf die Liste" tippen.';
+  status.textContent = 'Nest ist geöffnet – dort die Zutaten nacheinander bestätigen.';
 }
 
 async function kopiereEinkauf(id) {
@@ -150,5 +150,5 @@ async function kopiereEinkauf(id) {
     document.execCommand('copy');
     feld.remove();
   }
-  status.textContent = `${zeilen.length} Zutaten kopiert – in Nest bei "mehrere auf einmal" einfügen.`;
+  status.textContent = `${zeilen.length} Zutaten kopiert.`;
 }
