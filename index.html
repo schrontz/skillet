@@ -185,8 +185,14 @@
   .chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
   .chip { background: var(--bg); border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.8rem; }
   .aktionen { display: flex; gap: 0.5rem; margin-top: 1rem; }
-  .aktionen > button { flex: 1; margin-top: 0; }
+  .aktionen > button { flex: 1 1 0; min-width: 0; margin-top: 0; padding-left: 0.5rem; padding-right: 0.5rem; }
   .zentriert { text-align: center; }
+  .einkauf-box { margin-top: 0.7rem; padding: 0.7rem; background: var(--bg); border-radius: 8px; }
+  .einkauf-zeile {
+    display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.4rem 0;
+    color: var(--ink); font-size: 0.92rem; border-bottom: 1px solid var(--linie); cursor: pointer;
+  }
+  .einkauf-zeile input { width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--accent); }
 
   /* ---- Bewertungen, Fortschritt, Verlauf (bestehend) ---- */
   .kriterium { display: flex; justify-content: space-between; gap: 0.5rem; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--linie); }
@@ -391,6 +397,7 @@
 
 <script src="shared.js"></script>
 <script src="recipes.js"></script>
+<script src="einkauf.js"></script>
 <script src="reflect.js"></script>
 <script src="progress-history.js"></script>
 <script src="kochmodus.js"></script>

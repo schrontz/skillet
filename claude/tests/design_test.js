@@ -155,6 +155,48 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(p.fehler.length === 0, 'Kochen: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
+  // ---- 12. Einkaufsliste an Nest ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  await p.addInitScript(() => {
+    window.__geoeffnet = [];
+    window.open = (url) => { window.__geoeffnet.push(url); return null; };
+    window.__kopiert = null;
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async t => { window.__kopiert = t; } } });
+  });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.fill('#zutaten-liste-r1 input >> nth=0', '400'); await p.dispatchEvent('#zutaten-liste-r1 input >> nth=0', 'change'); await p.waitForTimeout(150);
+  await p.click('#recipe-detail-r1 >> text=Einkaufsliste'); await p.waitForTimeout(200);
+  const zeilen = await p.locator('#einkauf-r1 .einkauf-zeile span').allTextContents();
+  check(JSON.stringify(zeilen) === JSON.stringify(['400 g Rindergulasch', '2 Zwiebeln', 'Paprikapulver "edelsüß"', 'Salz']), 'Einkaufsliste mit umgerechneten Mengen: ' + JSON.stringify(zeilen));
+  check(!(await p.isChecked('#einkauf-r1 .einkauf-haken >> nth=3')), 'Salz ist abgewählt');
+  check((await p.textContent('#einkauf-r1')).includes('2,4 Portionen'), 'Hinweis auf eingestellte Portionen');
+  check(await kein_seitlich(p, 320), 'Einkaufsliste: nichts ragt seitlich heraus');
+  // Knöpfe dürfen nicht über den Kartenrand laufen (wird von scrollWidth nicht erkannt)
+  const ueberstand = await p.evaluate(() => {
+    const box = document.getElementById('recipe-detail-r1').getBoundingClientRect();
+    return [...document.querySelectorAll('#recipe-detail-r1 button')].filter(b => b.offsetParent && b.getBoundingClientRect().right > box.right + 0.5).map(b => b.textContent.trim());
+  });
+  check(ueberstand.length === 0, 'Alle Knöpfe bleiben innerhalb der Karte ' + JSON.stringify(ueberstand));
+  await p.locator('#recipe-detail-r1').screenshot({ path: OUT + '/n8_einkauf.png' });
+  await p.click('#recipe-detail-r1 .mini-rund >> nth=1'); await p.waitForTimeout(150);
+  check((await p.textContent('#einkauf-r1 .einkauf-zeile >> nth=0')).includes('567 g'), 'Portionen ändern rechnet die offene Einkaufsliste mit um (3,4 Portionen)');
+  await p.click('#einkauf-r1 >> text=An Nest senden'); await p.waitForTimeout(150);
+  const url = (await p.evaluate(() => window.__geoeffnet))[0] || '';
+  const params = new URL(url).searchParams;
+  check(url.startsWith('https://schrontz.github.io/nest/?'), 'Link geht an Nest');
+  check(params.get('einkauf') === '567 g Rindergulasch\n2 Zwiebeln\nPaprikapulver "edelsüß"', 'Link enthält genau die gewählten Zeilen');
+  check(params.get('rezept') === 'Gulasch nach Omas Art', 'Link enthält den Rezepttitel');
+  await p.uncheck('#einkauf-r1 .einkauf-haken >> nth=1');
+  await p.click('#einkauf-r1 >> text=Stattdessen kopieren'); await p.waitForTimeout(150);
+  check((await p.evaluate(() => window.__kopiert)) === '567 g Rindergulasch\nPaprikapulver "edelsüß"', 'Kopieren nimmt nur die angehakten Zeilen');
+  // Rezept ohne strukturierte Zutaten
+  await p.click('.rezept-karte >> nth=1'); await p.waitForTimeout(200);
+  await p.click('#recipe-detail-r2 >> text=Einkaufsliste'); await p.waitForTimeout(200);
+  check((await p.textContent('#einkauf-r2')).includes('keine Zutaten'), 'Rezept ohne Zutaten: klarer Hinweis');
+  check(p.fehler.length === 0, 'Einkaufsliste: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
   // ---- 11. Desktop: Kochmodus verborgen, Freestyle breit ----
   p = await neueSeite(browser, 1000);
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);

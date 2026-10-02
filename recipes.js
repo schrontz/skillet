@@ -468,10 +468,12 @@
       <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
       ${r.quelle_url ? `<div style="margin-top:0.8rem;"><a href="${htmlSicher(r.quelle_url)}" target="_blank" rel="noopener" style="color: var(--accent); font-size:0.85rem;">Original-Rezept öffnen</a></div>` : ''}
 
-      <div class="aktionen">
-        <button class="btn-haupt nur-handy" onclick="startKochmodus('${id}')">Kochen</button>
+      <button class="btn-haupt nur-handy" onclick="startKochmodus('${id}')">Kochen</button>
+      <div class="aktionen" style="margin-top:0.5rem;">
+        <button class="btn-umriss" onclick="toggleEinkauf('${id}')">Einkaufsliste</button>
         <button class="btn-umriss" onclick="zeigeBearbeitenWahl('${id}')">Bearbeiten</button>
       </div>
+      <div id="einkauf-${id}" class="einkauf-box" style="display:none;"></div>
       <div id="bearbeiten-wahl-${id}" style="display:none; margin-top:0.6rem;">
         <div id="reflexions-hinweis-${id}"></div>
         <div class="aktionen" style="margin-top:0.4rem;">
@@ -505,6 +507,7 @@
     aktuellePortionen[id] = neu;
     document.getElementById(`portionen-anzeige-${id}`).textContent = neu;
     renderZutatenListe(id);
+    if (typeof renderEinkauf === 'function') renderEinkauf(id); // offene Einkaufsliste mit umrechnen
   }
 
   function renderZutatenListe(id) {
@@ -541,6 +544,7 @@
     aktuellePortionen[id] = Math.round(r.basis_portionen * faktor * 10) / 10;
     document.getElementById(`portionen-anzeige-${id}`).textContent = aktuellePortionen[id];
     renderZutatenListe(id);
+    if (typeof renderEinkauf === 'function') renderEinkauf(id); // offene Einkaufsliste mit umrechnen
   }
 
   // ---- Verknüpfte Techniken für die Detailansicht laden ----
