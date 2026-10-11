@@ -76,28 +76,68 @@
   }
 
 
-  // ---- Formular "Rezept hinzufügen" auf- und zuklappen (wie in Nest) ----
+  // ---- Schwebende Karte (wie in Nest): Rezept ansehen ODER anlegen/bearbeiten ----
+  // Eigener Eintrag im Browser-Verlauf, damit die Zurück-Taste die Karte schließt
+  // statt die App zu verlassen. ✕ geht deshalb über history.back().
+  let rezeptKarteModus = null; // 'detail' | 'formular' | null (zu)
+
+  function rezeptKarteOffen() {
+    return document.getElementById('rezept-ueberlagerung').style.display === 'block';
+  }
+
+  function zeigeRezeptKarte(modus, titel) {
+    const ueber = document.getElementById('rezept-ueberlagerung');
+    const warOffen = rezeptKarteOffen();
+    rezeptKarteModus = modus;
+    document.getElementById('rezept-karte-titel').textContent = titel;
+    document.getElementById('rezept-karte-detail').style.display = modus === 'detail' ? 'block' : 'none';
+    document.getElementById('rezept-add-form').style.display = modus === 'formular' ? 'block' : 'none';
+    ueber.style.display = 'block';
+    ueber.scrollTop = 0;
+    document.body.classList.add('karte-offen');
+    if (!warOffen) history.pushState({ skilletKarte: true }, '');
+  }
+
+  function versteckeRezeptKarte() {
+    document.getElementById('rezept-ueberlagerung').style.display = 'none';
+    document.getElementById('rezept-karte-detail').innerHTML = '';
+    document.body.classList.remove('karte-offen');
+    rezeptKarteModus = null;
+  }
+
+  function rezeptKarteZu() {
+    if (!rezeptKarteOffen()) return;
+    if (history.state && history.state.skilletKarte) history.back(); // popstate versteckt die Karte
+    else versteckeRezeptKarte();
+  }
+
+  window.addEventListener('popstate', () => { if (rezeptKarteOffen()) versteckeRezeptKarte(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && rezeptKarteOffen()) rezeptKarteZu(); });
+
+  // Formular in der Karte zeigen. Titel und Import-Feld richten sich danach,
+  // ob neu angelegt oder ein bestehendes Rezept bearbeitet wird.
   function oeffneRezeptFormular() {
-    document.getElementById('rezept-add-form').style.display = 'block';
-    document.getElementById('rezept-add-toggle').textContent = 'Formular schließen';
+    const titel = editingOriginalId ? 'Rezept bearbeiten' : (editingCopyOf ? 'Als Kopie bearbeiten' : 'Neues Rezept');
+    document.getElementById('rezept-import-block').style.display = (editingOriginalId || editingCopyOf) ? 'none' : 'block';
+    zeigeRezeptKarte('formular', titel);
   }
 
+  // Eingaben bleiben beim Schließen erhalten (wie früher beim Zuklappen)
   function schliesseRezeptFormular() {
-    document.getElementById('rezept-add-form').style.display = 'none';
-    document.getElementById('rezept-add-toggle').textContent = '+ Rezept hinzufügen';
+    if (rezeptKarteModus === 'formular') rezeptKarteZu();
   }
 
-  function toggleRezeptFormular() {
-    const offen = document.getElementById('rezept-add-form').style.display === 'block';
-    if (offen) schliesseRezeptFormular(); else oeffneRezeptFormular();
+  function oeffneNeuesRezept() {
+    document.getElementById('recipe-status-line').textContent = '';
+    document.getElementById('import-status-line').textContent = '';
+    oeffneRezeptFormular();
   }
 
-  // Bereich Rezepte öffnen, Formular aufklappen und hinscrollen -
+  // Bereich Rezepte öffnen und das Formular als Karte zeigen -
   // für Import, Freestyle, Diktat aus dem Kochmodus und Bearbeiten
   function zeigeRezeptFormular() {
-    openSection('recipes');
+    if (document.getElementById('view-recipes').style.display !== 'block') openSection('recipes');
     oeffneRezeptFormular();
-    document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   // ---- Rezept von einer Webseite importieren ----
@@ -413,10 +453,9 @@
     const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
 
     listEl.innerHTML = data.map(r => `
-      <div class="rezept-karte" onclick="toggleRecipeDetail('${r.id}')">
+      <div class="rezept-karte" data-id="${r.id}" onclick="oeffneRezept('${r.id}')">
         <div class="rezept-titel">${htmlSicher(r.titel)}</div>
         <div class="rezept-meta">${htmlSicher(rezeptMeta(r, titelById))}</div>
-        <div id="recipe-detail-${r.id}" class="rezept-detail" style="display:none;" onclick="event.stopPropagation()"></div>
       </div>
     `).join('');
   }
@@ -432,58 +471,79 @@
     return teile.join(' · ');
   }
 
-  // ---- Detail aufklappen/zuklappen ----
-  function toggleRecipeDetail(id) {
-    const detailEl = document.getElementById(`recipe-detail-${id}`);
-    const isOpen = detailEl.style.display === 'block';
-    // alle anderen offenen Details schließen, damit die Liste übersichtlich bleibt
-    document.querySelectorAll('[id^="recipe-detail-"]').forEach(el => el.style.display = 'none');
+  // Meta-Zeile in der Karte: wie in der Liste, die Quelle aber als Link
+  function rezeptMetaHtml(r) {
+    const teile = [];
+    if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
+    const original = r.kopie_von && allRecipesCache.find(x => x.id === r.kopie_von);
+    if (original) teile.push(`Kopie von „${htmlSicher(original.titel)}“`);
+    if (r.quelle_url) {
+      let host = 'Original';
+      try { host = new URL(r.quelle_url).hostname.replace(/^www\./, ''); } catch (e) {}
+      teile.push(`<a href="${htmlSicher(r.quelle_url)}" target="_blank" rel="noopener">${htmlSicher(host)} ↗</a>`);
+    }
+    return teile.join(' · ');
+  }
 
-    if (isOpen) return; // war offen -> jetzt zu, fertig
-
+  // ---- Rezept als schwebende Karte öffnen ----
+  function oeffneRezept(id) {
     const r = allRecipesCache.find(rec => rec.id === id);
+    if (!r) return;
     const hatStrukturierteZutaten = r.zutaten_strukturiert && r.zutaten_strukturiert.length > 0 && r.basis_portionen;
     const nurPortionenOhneStruktur = r.basis_portionen && !hatStrukturierteZutaten;
     const hatSchritte = r.anleitung_schritte && r.anleitung_schritte.length > 0;
+    const meta = rezeptMetaHtml(r);
 
-    detailEl.innerHTML = `
-      <div class="abschnitt">Zutaten</div>
-      ${hatStrukturierteZutaten
-        ? `<div class="portion-steuerung">
-             <button class="mini-rund" onclick="changePortionen('${id}', -1)" aria-label="weniger Portionen">−</button>
-             <b id="portionen-anzeige-${id}">${r.basis_portionen}</b> Portionen
-             <button class="mini-rund" onclick="changePortionen('${id}', 1)" aria-label="mehr Portionen">+</button>
-           </div>
-           <div id="zutaten-liste-${id}"></div>
-           <div class="muted" style="font-size:0.78rem; margin-top:4px;">Tipp: Trag bei einer Zutat ein, wie viel du hast – der Rest rechnet sich mit.</div>`
-        : `${nurPortionenOhneStruktur ? `<div class="muted" style="margin-bottom:4px;">Für ${r.basis_portionen} Portionen</div>` : ''}
-           <div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.zutaten) || '<span class="muted">(keine Zutaten gespeichert)</span>'}</div>`}
+    document.getElementById('rezept-karte-detail').innerHTML = `
+      <div id="recipe-detail-${id}" class="rezept-detail">
+        ${meta ? `<div class="karte-meta">${meta}</div>` : ''}
+        <div class="reiter" role="tablist">
+          <button type="button" class="aktiv" data-reiter="zutaten" onclick="zeigeReiter('${id}', 'zutaten')">Zutaten</button>
+          <button type="button" data-reiter="zubereitung" onclick="zeigeReiter('${id}', 'zubereitung')">Zubereitung</button>
+        </div>
 
-      <div class="abschnitt">Zubereitung</div>
-      ${hatSchritte
-        ? `<ol class="schritt-liste">${r.anleitung_schritte.map(s => `<li>${htmlSicher(s)}</li>`).join('')}</ol>`
-        : `<div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.anleitung) || '<span class="muted">(keine Anleitung gespeichert)</span>'}</div>`}
+        <div class="reiter-inhalt" data-reiter="zutaten">
+          ${hatStrukturierteZutaten
+            ? `<div class="portion-steuerung">
+                 <button class="mini-rund" onclick="changePortionen('${id}', -1)" aria-label="weniger Portionen">−</button>
+                 <span><b id="portionen-anzeige-${id}">${r.basis_portionen}</b> Portionen</span>
+                 <button class="mini-rund" onclick="changePortionen('${id}', 1)" aria-label="mehr Portionen">+</button>
+               </div>
+               <div id="zutaten-liste-${id}"></div>
+               <div class="muted" style="font-size:0.78rem; margin-top:4px;">Tipp: Tipp auf eine Menge, wenn du weniger davon hast – der Rest rechnet sich mit.</div>`
+            : `${nurPortionenOhneStruktur ? `<div class="muted" style="margin-bottom:4px;">Für ${r.basis_portionen} Portionen</div>` : ''}
+               <div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.zutaten) || '<span class="muted">(keine Zutaten gespeichert)</span>'}</div>`}
+        </div>
 
-      <div class="abschnitt">Techniken</div>
-      <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
-      ${r.quelle_url ? `<div style="margin-top:0.8rem;"><a href="${htmlSicher(r.quelle_url)}" target="_blank" rel="noopener" style="color: var(--accent); font-size:0.85rem;">Original-Rezept öffnen</a></div>` : ''}
+        <div class="reiter-inhalt" data-reiter="zubereitung" style="display:none;">
+          ${hatSchritte
+            ? `<ol class="schritt-liste">${r.anleitung_schritte.map(s => `<li>${htmlSicher(s)}</li>`).join('')}</ol>`
+            : `<div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.anleitung) || '<span class="muted">(keine Anleitung gespeichert)</span>'}</div>`}
+          <div class="abschnitt">Techniken</div>
+          <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
+        </div>
 
-      <button class="btn-haupt nur-handy" onclick="startKochmodus('${id}')">Kochen</button>
-      <div class="aktionen" style="margin-top:0.5rem;">
-        <button class="btn-umriss" onclick="toggleEinkauf('${id}')">Einkaufsliste</button>
-        <button class="btn-umriss" onclick="zeigeBearbeitenWahl('${id}')">Bearbeiten</button>
-      </div>
-      <div id="einkauf-${id}" class="einkauf-box" style="display:none;"></div>
-      <div id="bearbeiten-wahl-${id}" style="display:none; margin-top:0.6rem;">
-        <div id="reflexions-hinweis-${id}"></div>
-        <div class="aktionen" style="margin-top:0.4rem;">
-          <button class="btn-klein" onclick="startEditOriginal('${id}')">Original ändern</button>
-          <button class="btn-klein" onclick="startEditAsCopy('${id}')">Als Kopie</button>
+        <div class="karten-aktionen">
+          <button class="btn-haupt nur-handy" onclick="kochenAusKarte('${id}')">Kochen</button>
+          <button type="button" class="ikon-knopf" data-panel="einkauf" onclick="zeigeKartenPanel('${id}', 'einkauf')" aria-label="Einkaufsliste" title="Einkaufsliste">🛒</button>
+          <button type="button" class="ikon-knopf" data-panel="bearbeiten" onclick="zeigeKartenPanel('${id}', 'bearbeiten')" aria-label="Bearbeiten" title="Bearbeiten">✎</button>
+          <button type="button" class="ikon-knopf" data-panel="mehr" onclick="zeigeKartenPanel('${id}', 'mehr')" aria-label="Mehr" title="Mehr">⋯</button>
+        </div>
+        <div id="einkauf-${id}" class="einkauf-box" style="display:none;"></div>
+        <div id="bearbeiten-wahl-${id}" class="karten-panel" style="display:none;">
+          <div style="font-size:0.88rem;">Wie möchtest du bearbeiten?</div>
+          <div id="reflexions-hinweis-${id}"></div>
+          <div class="aktionen">
+            <button class="btn-klein" onclick="startEditOriginal('${id}')">Original ändern</button>
+            <button class="btn-klein" onclick="startEditAsCopy('${id}')">Als Kopie</button>
+          </div>
+        </div>
+        <div id="mehr-${id}" class="karten-panel" style="display:none;">
+          <button class="btn-klein" style="color:var(--accent);" onclick="deleteRecipe('${id}')">Rezept löschen</button>
         </div>
       </div>
-      <div class="zentriert"><button class="btn-dezent" onclick="deleteRecipe('${id}')">Löschen</button></div>
     `;
-    detailEl.style.display = 'block';
+    zeigeRezeptKarte('detail', r.titel);
     if (hatStrukturierteZutaten) {
       aktuellePortionen[id] = r.basis_portionen;
       renderZutatenListe(id);
@@ -491,23 +551,50 @@
     loadRecipeTechniquesForDetail(id);
   }
 
-  // "Bearbeiten" fragt erst, ob Original oder Kopie - mit Hinweis, falls schon reflektiert
-  function zeigeBearbeitenWahl(id) {
-    const el = document.getElementById(`bearbeiten-wahl-${id}`);
-    const offen = el.style.display === 'block';
-    el.style.display = offen ? 'none' : 'block';
-    if (!offen) warnFallsReflektiert(id);
+  function zeigeReiter(id, reiter) {
+    const box = document.getElementById(`recipe-detail-${id}`);
+    box.querySelectorAll('.reiter button').forEach(b => b.classList.toggle('aktiv', b.dataset.reiter === reiter));
+    box.querySelectorAll('.reiter-inhalt').forEach(el => el.style.display = el.dataset.reiter === reiter ? 'block' : 'none');
+  }
+
+  // Einkaufsliste, Bearbeiten-Wahl und "Mehr" klappen unter der Knopfleiste auf - immer nur eins
+  function zeigeKartenPanel(id, welches) {
+    const panels = { einkauf: `einkauf-${id}`, bearbeiten: `bearbeiten-wahl-${id}`, mehr: `mehr-${id}` };
+    const warOffen = document.getElementById(panels[welches]).style.display === 'block';
+    Object.values(panels).forEach(pid => document.getElementById(pid).style.display = 'none');
+    document.querySelectorAll(`#recipe-detail-${id} .ikon-knopf`).forEach(b => b.classList.remove('an'));
+    if (warOffen) return;
+
+    document.getElementById(panels[welches]).style.display = 'block';
+    document.querySelector(`#recipe-detail-${id} .ikon-knopf[data-panel="${welches}"]`).classList.add('an');
+    if (welches === 'einkauf') renderEinkauf(id);
+    if (welches === 'bearbeiten') warnFallsReflektiert(id);
+    document.getElementById(panels[welches]).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function kochenAusKarte(id) {
+    rezeptKarteZu();
+    startKochmodus(id);
   }
 
   // ---- Portionen ändern und Zutatenliste neu berechnen ----
   let aktuellePortionen = {};
 
   function changePortionen(id, delta) {
-    const neu = Math.max(1, (aktuellePortionen[id] || 1) + delta);
+    const neu = Math.max(1, Math.round(((aktuellePortionen[id] || 1) + delta) * 10) / 10);
     aktuellePortionen[id] = neu;
-    document.getElementById(`portionen-anzeige-${id}`).textContent = neu;
+    document.getElementById(`portionen-anzeige-${id}`).textContent = zahlDeutsch(neu);
     renderZutatenListe(id);
     if (typeof renderEinkauf === 'function') renderEinkauf(id); // offene Einkaufsliste mit umrechnen
+  }
+
+  function zahlDeutsch(wert) {
+    return String(wert).replace('.', ',');
+  }
+
+  // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
+  function mengeRunden(menge) {
+    return menge < 10 ? Math.round(menge * 10) / 10 : Math.round(menge);
   }
 
   function renderZutatenListe(id) {
@@ -519,17 +606,27 @@
       if (z.menge === null || z.menge === undefined) {
         return `<div class="zutat-zeile"><span>${htmlSicher(z.name)}</span><span class="menge">${htmlSicher(z.einheit || '')}</span></div>`;
       }
-      const neueMenge = z.menge * faktor;
-      // sinnvoll runden: bei kleinen Mengen 1 Nachkommastelle, sonst ganze Zahl
-      const anzeige = neueMenge < 10 ? Math.round(neueMenge * 10) / 10 : Math.round(neueMenge);
+      const anzeige = mengeRunden(z.menge * faktor);
       return `<div class="zutat-zeile">
         <span>${htmlSicher(z.name)}</span>
-        <span class="menge">
-          <input type="number" step="any" value="${anzeige}" data-basis="${z.menge}" data-id="${id}" onchange="scaleByZutat(this)" aria-label="Menge ${htmlSicher(z.name)}">
-          ${htmlSicher(z.einheit || '')}
-        </span>
+        <span class="menge"><button type="button" class="menge-knopf" data-id="${id}" data-basis="${z.menge}" data-wert="${anzeige}"
+          data-einheit="${htmlSicher(z.einheit || '')}" onclick="mengeBearbeiten(this)"
+          aria-label="Menge ${htmlSicher(z.name)} ändern">${zahlDeutsch(anzeige)}${z.einheit ? ' ' + htmlSicher(z.einheit) : ''}</button></span>
       </div>`;
     }).join('');
+  }
+
+  // Tipp auf eine Menge: wird zum Eingabefeld, die Eingabe rechnet alles andere um
+  function mengeBearbeiten(knopf) {
+    const span = knopf.parentElement;
+    span.innerHTML = `<input type="number" step="any" inputmode="decimal" value="${knopf.dataset.wert}"
+      data-basis="${knopf.dataset.basis}" data-id="${knopf.dataset.id}" aria-label="neue Menge"> ${knopf.dataset.einheit}`;
+    const input = span.querySelector('input');
+    input.addEventListener('change', () => scaleByZutat(input));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+    input.addEventListener('blur', () => { if (document.body.contains(input)) renderZutatenListe(input.dataset.id); });
+    input.focus();
+    input.select();
   }
 
   // ---- Skalierung über eine einzelne Zutat statt über Portionen (z. B. "hab nur 400g statt 500g") ----
@@ -542,7 +639,7 @@
     const r = allRecipesCache.find(rec => rec.id === id);
     const faktor = neueMenge / basisMenge;
     aktuellePortionen[id] = Math.round(r.basis_portionen * faktor * 10) / 10;
-    document.getElementById(`portionen-anzeige-${id}`).textContent = aktuellePortionen[id];
+    document.getElementById(`portionen-anzeige-${id}`).textContent = zahlDeutsch(aktuellePortionen[id]);
     renderZutatenListe(id);
     if (typeof renderEinkauf === 'function') renderEinkauf(id); // offene Einkaufsliste mit umrechnen
   }
@@ -607,7 +704,7 @@
     befuelleFormularAusRezept(r);
 
     document.getElementById('edit-mode-text').innerHTML =
-      `Du bearbeitest eine Kopie von "<span id="edit-mode-original-title">${r.titel}</span>". Wird als neues, eigenständiges Rezept gespeichert.`;
+      `Du bearbeitest eine Kopie von "<span id="edit-mode-original-title">${htmlSicher(r.titel)}</span>". Wird als neues, eigenständiges Rezept gespeichert.`;
     document.getElementById('edit-mode-banner').style.display = 'block';
     zeigeRezeptFormular();
   }
@@ -619,7 +716,7 @@
     befuelleFormularAusRezept(r);
 
     document.getElementById('edit-mode-text').innerHTML =
-      `Du änderst "<span id="edit-mode-original-title">${r.titel}</span>" direkt - keine Kopie, das Original wird überschrieben.`;
+      `Du änderst "<span id="edit-mode-original-title">${htmlSicher(r.titel)}</span>" direkt - keine Kopie, das Original wird überschrieben.`;
     document.getElementById('edit-mode-banner').style.display = 'block';
     zeigeRezeptFormular();
   }
@@ -643,6 +740,7 @@
       method: "DELETE",
       headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
     });
+    rezeptKarteZu();
     loadRecipes();
   }
 

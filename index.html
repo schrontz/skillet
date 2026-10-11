@@ -165,10 +165,13 @@
   }
   .rezept-titel { font-weight: 600; overflow-wrap: anywhere; }
   .rezept-meta { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
-  .rezept-detail { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid var(--border); cursor: default; }
-  .portion-steuerung { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; margin-bottom: 0.3rem; }
+  .rezept-detail { cursor: default; }
+  .portion-steuerung {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.92rem;
+    background: #faf3ee; border-radius: 10px; padding: 0.3rem 0.35rem; margin-bottom: 0.3rem;
+  }
   .mini-rund {
-    width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: var(--bg);
+    width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: var(--card); box-shadow: var(--schatten);
     color: var(--accent-dark); font-size: 1.1rem; display: grid; place-items: center; cursor: pointer;
   }
   .zutat-zeile {
@@ -176,7 +179,7 @@
     padding: 0.35rem 0; font-size: 0.92rem; border-bottom: 1px solid var(--linie);
   }
   .zutat-zeile:last-child { border-bottom: none; }
-  .zutat-zeile .menge { color: var(--muted); white-space: nowrap; }
+  .zutat-zeile .menge { color: var(--muted); white-space: nowrap; text-align: right; }
   .zutat-zeile input {
     width: 3.6rem; padding: 0.2rem 0.3rem; text-align: right; font-size: 0.9rem; border-radius: 4px;
   }
@@ -193,6 +196,49 @@
     color: var(--ink); font-size: 0.92rem; border-bottom: 1px solid var(--linie); cursor: pointer;
   }
   .einkauf-zeile input { width: 1.1rem; height: 1.1rem; flex: none; accent-color: var(--accent); }
+
+  /* ---- Schwebende Karte wie in Nest: Rezept ansehen, anlegen, bearbeiten ---- */
+  .karte-ueberlagerung {
+    position: fixed; inset: 0; z-index: 900; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    /* Oben verankert statt mittig: so schiebt die Handy-Tastatur nichts aus dem Bild */
+    padding: max(3.5rem, calc(env(safe-area-inset-top) + 1rem)) 0.75rem calc(1.5rem + env(safe-area-inset-bottom));
+    background: rgba(43, 36, 32, 0.30); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .karte-schwebend {
+    max-width: 480px; margin: 0 auto; background: var(--card); border-radius: 16px;
+    padding: 1rem 0.9rem 1.1rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  }
+  body.karte-offen { overflow: hidden; }
+  .karte-kopf { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.15rem; }
+  .karte-kopf h3 { flex: 1; min-width: 0; margin: 0; font-size: 1.15rem; line-height: 1.25; color: var(--accent-dark); overflow-wrap: anywhere; }
+  .karte-zu {
+    flex: none; margin: -0.3rem -0.4rem 0 0; padding: 0.3rem 0.5rem; border: none; border-radius: 8px;
+    background: none; color: var(--muted); font-size: 1.25rem; line-height: 1; cursor: pointer;
+  }
+  .karte-zu:hover { background: rgba(0, 0, 0, 0.06); }
+  .karte-meta { font-size: 0.82rem; color: var(--muted); margin: 0 0 0.8rem; }
+  .karte-meta a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+  .reiter { display: flex; gap: 0.35rem; margin-bottom: 0.9rem; }
+  .reiter button {
+    flex: 1 1 0; min-width: 0; padding: 0.5rem 0.2rem; border-radius: 999px; border: 1.5px solid #e2d6cc;
+    background: var(--card); color: var(--ink); font-size: 0.88rem; font-weight: 600; cursor: pointer;
+  }
+  .reiter button.aktiv { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .menge-knopf {
+    padding: 0.1rem 0; border: none; border-bottom: 1px dashed #d8b9a8; border-radius: 0; background: none;
+    color: var(--accent-dark); font-size: 0.92rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+  }
+  .karten-aktionen { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 1rem; }
+  .karten-aktionen .btn-haupt { flex: 1; margin-top: 0; }
+  .ikon-knopf {
+    flex: none; width: 2.75rem; height: 2.75rem; padding: 0; border-radius: 10px; border: 1.5px solid #e2d6cc;
+    background: var(--card); color: var(--accent-dark); font-size: 1.05rem; display: grid; place-items: center; cursor: pointer;
+  }
+  .ikon-knopf.an { background: var(--accent-light); border-color: var(--accent-light); }
+  .karten-panel { margin-top: 0.7rem; padding: 0.7rem; background: var(--bg); border-radius: 8px; }
+  .karten-panel .aktionen { margin-top: 0.4rem; }
+  .oder-trenner { display: flex; align-items: center; gap: 0.6rem; margin: 1rem 0 0.2rem; color: var(--muted); font-size: 0.8rem; }
+  .oder-trenner::before, .oder-trenner::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 
   /* ---- Bewertungen, Fortschritt, Verlauf (bestehend) ---- */
   .kriterium { display: flex; justify-content: space-between; gap: 0.5rem; padding: 6px 0; font-size: 0.92rem; border-bottom: 1px solid var(--linie); }
@@ -275,42 +321,7 @@
 
   <!-- REZEPTE -->
   <div id="view-recipes" class="tab-panel" style="display:none;">
-    <button type="button" class="add-toggle" id="rezept-add-toggle" onclick="toggleRezeptFormular()">+ Rezept hinzufügen</button>
-    <div id="rezept-add-form" style="display:none;">
-      <div class="card">
-        <label for="import-url-input">Von einer Webseite importieren</label>
-        <div style="display:flex; gap:0.5rem;">
-          <input type="text" id="import-url-input" placeholder="https://..." style="flex:1; min-width:0;">
-          <button class="btn-umriss" style="flex-shrink:0;" onclick="importRecipeFromUrl()">Laden</button>
-        </div>
-        <div class="status-line" id="import-status-line"></div>
-      </div>
-
-      <div class="card">
-        <div id="edit-mode-banner" class="edit-banner" style="display:none;">
-          <span id="edit-mode-text">Du bearbeitest eine Kopie von "<span id="edit-mode-original-title"></span>". Wird als neues, eigenständiges Rezept gespeichert.</span>
-          <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
-          <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent);">Abbrechen</a>
-        </div>
-        <label for="recipe-titel-input">Titel</label>
-        <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck">
-
-        <label>Zutaten</label>
-        <div id="zutaten-rows"></div>
-        <button type="button" class="btn-klein" onclick="addZutatRow()">+ Zutat</button>
-
-        <label for="recipe-portionen-input">Portionen (für die Mengenumrechnung)</label>
-        <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4">
-
-        <label>Zubereitung</label>
-        <div id="schritte-rows"></div>
-        <button type="button" class="btn-klein" onclick="addSchrittRow()">+ Schritt</button>
-
-        <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:1.2rem;">Rezept speichern</button>
-        <div class="status-line" id="recipe-status-line"></div>
-      </div>
-    </div>
-
+    <button type="button" class="add-toggle" id="rezept-add-toggle" onclick="oeffneNeuesRezept()">+ Rezept hinzufügen</button>
     <div id="detect-card"></div>
     <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
   </div>
@@ -388,6 +399,52 @@
   <div id="view-history" class="tab-panel" style="display:none;">
     <div class="card" id="history-list">
       <div class="muted">Lade Verlauf...</div>
+    </div>
+  </div>
+</div>
+
+<!-- REZEPT ALS SCHWEBENDE KARTE (wie in Nest): Ansehen oder Anlegen/Bearbeiten -->
+<div id="rezept-ueberlagerung" class="karte-ueberlagerung" style="display:none;">
+  <div class="karte-schwebend" role="dialog" aria-labelledby="rezept-karte-titel">
+    <div class="karte-kopf">
+      <h3 id="rezept-karte-titel"></h3>
+      <button type="button" class="karte-zu" onclick="rezeptKarteZu()" aria-label="Schließen">✕</button>
+    </div>
+
+    <div id="rezept-karte-detail"></div>
+
+    <div id="rezept-add-form" style="display:none;">
+      <div id="rezept-import-block">
+        <label for="import-url-input">Von einer Webseite importieren</label>
+        <div style="display:flex; gap:0.5rem;">
+          <input type="text" id="import-url-input" placeholder="https://..." style="flex:1; min-width:0;">
+          <button class="btn-umriss" style="flex-shrink:0;" onclick="importRecipeFromUrl()">Laden</button>
+        </div>
+        <div class="status-line" id="import-status-line"></div>
+        <div class="oder-trenner"><span>oder selbst eintragen</span></div>
+      </div>
+
+      <div id="edit-mode-banner" class="edit-banner" style="display:none;">
+        <span id="edit-mode-text"></span>
+        <span id="edit-mode-mengen-hinweis" class="muted" style="display:block; font-size:0.8rem; margin-top:4px;"></span>
+        <a href="#" onclick="cancelEditCopy(); return false;" style="color: var(--accent);">Bearbeiten abbrechen</a>
+      </div>
+      <label for="recipe-titel-input">Titel</label>
+      <input type="text" id="recipe-titel-input" placeholder="z. B. Rührei mit Speck">
+
+      <label>Zutaten</label>
+      <div id="zutaten-rows"></div>
+      <button type="button" class="btn-klein" onclick="addZutatRow()">+ Zutat</button>
+
+      <label for="recipe-portionen-input">Portionen (für die Mengenumrechnung)</label>
+      <input type="number" id="recipe-portionen-input" min="1" placeholder="z. B. 4">
+
+      <label>Zubereitung</label>
+      <div id="schritte-rows"></div>
+      <button type="button" class="btn-klein" onclick="addSchrittRow()">+ Schritt</button>
+
+      <button class="primary" id="recipe-submit-btn" onclick="submitRecipe()" style="margin-top:1.2rem;">Rezept speichern</button>
+      <div class="status-line" id="recipe-status-line"></div>
     </div>
   </div>
 </div>
