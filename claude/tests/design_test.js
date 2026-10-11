@@ -324,6 +324,15 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(p.fehler.length === 0, 'Nährwerte: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
+  // ---- 14. Datenbank ohne Spalte "naehrwerte": Liste lädt trotzdem ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  await p.route(/rest\/v1\/recipes\?select=.*naehrwerte/, route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ code: '42703', message: 'column recipes.naehrwerte does not exist' }) }));
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  check(await p.locator('.rezept-karte').count() === 3, 'Ohne Spalte naehrwerte: Rezeptliste lädt trotzdem');
+  check(p.calls.some(c => c.startsWith('GET /rest/v1/recipes?select=') && !c.includes('naehrwerte')), 'Zweiter Versuch ohne die Spalte wurde wirklich gemacht');
+  check(p.fehler.length === 0, 'Ohne Spalte naehrwerte: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
   // ---- 11. Desktop: Kochmodus verborgen, Freestyle breit ----
   p = await neueSeite(browser, 1000);
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);

@@ -440,10 +440,11 @@
     const listEl = document.getElementById('recipe-list');
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
 
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,naehrwerte,erstellt_am&order=erstellt_am.desc`,
-      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-    );
+    const spalten = 'id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am';
+    const kopf = { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } };
+    let res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=${spalten},naehrwerte&order=erstellt_am.desc`, kopf);
+    // Gibt es die Spalte "naehrwerte" (noch) nicht, die Liste trotzdem laden - nur eben ohne Nährwerte
+    if (!res.ok) res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=${spalten}&order=erstellt_am.desc`, kopf);
     const data = await res.json();
     allRecipesCache = data;
 
