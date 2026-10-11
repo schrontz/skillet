@@ -264,6 +264,7 @@
         setTimeout(() => handoffZuReflexion(savedRecipe.id, notiz), 600);
       }
 
+      naehrwerteImHintergrund(savedRecipe);
       await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
       statusLine.textContent = hinweisOriginalWeg ? "Gespeichert (ohne Kopie-Verweis, Original war weg)." : "Gespeichert!";
     } catch (e) {
@@ -313,6 +314,7 @@
     schliesseRezeptFormular();
     statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
     loadRecipes();
+    naehrwerteImHintergrund(savedRecipe);
 
     await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
     statusLine.textContent = "Gespeichert!";
@@ -439,7 +441,7 @@
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am&order=erstellt_am.desc`,
+      `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,naehrwerte,erstellt_am&order=erstellt_am.desc`,
       { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
     );
     const data = await res.json();
@@ -450,6 +452,12 @@
       return;
     }
 
+    renderRezeptListe();
+  }
+
+  function renderRezeptListe() {
+    const listEl = document.getElementById('recipe-list');
+    const data = allRecipesCache;
     const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
 
     listEl.innerHTML = data.map(r => `
@@ -464,6 +472,8 @@
   function rezeptMeta(r, titelById) {
     const teile = [];
     if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
+    const kcal = kcalProPortion(r);
+    if (kcal !== null) teile.push(`${kcal} kcal`);
     if (r.kopie_von && titelById[r.kopie_von]) teile.push(`Kopie von „${titelById[r.kopie_von]}“`);
     else if (r.quelle_url) {
       try { teile.push('aus ' + new URL(r.quelle_url).hostname.replace(/^www\./, '')); } catch (e) {}
@@ -475,6 +485,8 @@
   function rezeptMetaHtml(r) {
     const teile = [];
     if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
+    const kcal = kcalProPortion(r);
+    if (kcal !== null) teile.push(`${kcal} kcal pro Portion`);
     const original = r.kopie_von && allRecipesCache.find(x => x.id === r.kopie_von);
     if (original) teile.push(`Kopie von „${htmlSicher(original.titel)}“`);
     if (r.quelle_url) {
@@ -500,6 +512,7 @@
         <div class="reiter" role="tablist">
           <button type="button" class="aktiv" data-reiter="zutaten" onclick="zeigeReiter('${id}', 'zutaten')">Zutaten</button>
           <button type="button" data-reiter="zubereitung" onclick="zeigeReiter('${id}', 'zubereitung')">Zubereitung</button>
+          <button type="button" data-reiter="naehrwerte" onclick="zeigeReiter('${id}', 'naehrwerte')">Nährwerte</button>
         </div>
 
         <div class="reiter-inhalt" data-reiter="zutaten">
@@ -522,6 +535,8 @@
           <div class="abschnitt">Techniken</div>
           <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
         </div>
+
+        <div class="reiter-inhalt" data-reiter="naehrwerte" id="naehrwerte-${id}" style="display:none;"></div>
 
         <div class="karten-aktionen">
           <button class="btn-haupt nur-handy" onclick="kochenAusKarte('${id}')">Kochen</button>
@@ -555,6 +570,7 @@
     const box = document.getElementById(`recipe-detail-${id}`);
     box.querySelectorAll('.reiter button').forEach(b => b.classList.toggle('aktiv', b.dataset.reiter === reiter));
     box.querySelectorAll('.reiter-inhalt').forEach(el => el.style.display = el.dataset.reiter === reiter ? 'block' : 'none');
+    if (reiter === 'naehrwerte') zeigeNaehrwerte(id);
   }
 
   // Einkaufsliste, Bearbeiten-Wahl und "Mehr" klappen unter der Knopfleiste auf - immer nur eins

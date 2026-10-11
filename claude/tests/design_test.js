@@ -25,13 +25,29 @@ async function neueSeite(browser, width, storage) {
     let body = [];
     if (u.includes('/functions/v1/import-recipe')) body = {source:'structured',titel:'Importiertes Rezept',zutaten:'2 Eier',zutatenStrukturiert:[{menge:2,einheit:null,name:'Eier'}],anleitung:'1. Braten',basisPortionen:2};
     else if (u.includes('/functions/v1/extract-recipe-from-text')) body = {titel:'Diktiertes Rezept',zutatenStrukturiert:[{menge:2,einheit:null,name:'Zwiebeln'}],anleitungSchritte:['Zwiebeln schneiden','Anschwitzen'],basisPortionen:null};
+    else if (u.includes('/functions/v1/naehrwerte')) {
+      const anfrage = JSON.parse(req.postData() || '{}');
+      page.nwAnfragen = (page.nwAnfragen || []).concat([anfrage]);
+      body = page.nwFehler ? { error: 'Gemini antwortet nicht' } : {
+        version: 1, stand: anfrage.stand, quelle: 'BLS 4.0', berechnet_am: '2026-10-11T12:00:00Z',
+        summe: { kcal: 1302, eiweiss: 203.6, kh: 18.3, fett: 45.6 },
+        zutaten: [
+          { name: 'Rindergulasch', menge: 1000, einheit: 'g', status: 'ok', gramm: 1000, bls_code: 'U1', bls_name: 'Rind Gulasch (Bug) roh', annahme: null, unsicher: false, quelle: 'ki', je100: { kcal: 120, eiweiss: 20, kh: 0, fett: 4.5 }, kcal: 1200, eiweiss: 200, kh: 0, fett: 45 },
+          { name: 'Zwiebeln', menge: 3, einheit: null, status: 'ok', gramm: 300, bls_code: 'G480100', bls_name: 'Speisezwiebel roh', annahme: '1 Zwiebel ≈ 100 g', unsicher: false, quelle: 'ki', je100: { kcal: 34, eiweiss: 1.2, kh: 6.1, fett: 0.2 }, kcal: 102, eiweiss: 3.6, kh: 18.3, fett: 0.6 },
+          { name: 'Paprikapulver "edelsüß"', menge: 2, einheit: 'EL', status: 'vernachlaessigbar', unsicher: false },
+          { name: 'Salz', menge: null, einheit: null, status: 'vernachlaessigbar', unsicher: false }
+        ]
+      };
+    }
+    else if (u.includes('zutat_wissen')) { page.wissen = (page.wissen || []).concat([JSON.parse(req.postData() || '{}')]); body = []; }
     else if (u.includes('/functions/v1/detect-techniques')) body = {erkannte_technik_ids:['t1'],neue_technik_vorschlag:null};
     else if (u.includes('recipe_techniques')) body = m === 'GET' ? [{techniques:{name:'Scharf anbraten (Sautieren)'}},{techniques:{name:'Deglasieren'}}] : [];
     else if (u.includes('technique_progress')) body = [{level:1},{level:0}];
     else if (u.includes('/reflections')) body = u.includes('limit=1') && u.includes('recipe_id') ? [{id:'x'}] : [{id:'f1',erstellt_am:'2026-09-28T10:00:00Z',ergebnis:'sauber_bestaetigt',finaler_output:{kriterien_bewertung:[]},techniques:{name:'Deglasieren'},recipes:{titel:'Gulasch'}}];
     else if (u.includes('/techniques')) body = techniques;
     else if (u.includes('/recipes')) {
-      if (m === 'POST' || m === 'PATCH') body = [{id:'neu1', ...JSON.parse(req.postData() || '{}')}];
+      if (m === 'PATCH' && u.includes('id=eq.')) { const id = u.match(/id=eq\.([^&]+)/)[1]; body = [{...recipes.find(r => r.id === id), ...JSON.parse(req.postData() || '{}'), id}]; }
+      else if (m === 'POST' || m === 'PATCH') body = [{id:'neu1', ...JSON.parse(req.postData() || '{}')}];
       else if (u.includes('id=eq.')) body = recipes.filter(r => u.includes('id=eq.' + r.id));
       else body = recipes;
     }
@@ -154,6 +170,9 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   await p.click('#mehr-r3 >> text=Rezept löschen'); await p.waitForTimeout(500);
   check(p.calls.some(c => c.startsWith('DELETE /rest/v1/recipes?id=eq.r3')) && !(await sichtbar(p, '#rezept-ueberlagerung')), 'Löschen über ⋯ löscht und schließt die Karte');
 
+  // ---- 4c. Nach dem Speichern rechnet Skillet die Nährwerte im Hintergrund ----
+  check((p.nwAnfragen || []).some(a => a.recipe_id === 'r1' && a.zutaten.length === 4 && /^v1-/.test(a.stand)), 'Nach dem Speichern: Nährwerte im Hintergrund angefragt (mit Zutaten und Stand)');
+
   // ---- 5. Zurück zum Start ----
   await p.click('#bereich-kopf .rund-knopf'); await p.waitForTimeout(300);
   check(await sichtbar(p, '#start-view'), '‹ führt zurück zum Start');
@@ -249,6 +268,60 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   await p.click('#recipe-detail-r2 .ikon-knopf[data-panel="einkauf"]'); await p.waitForTimeout(200);
   check((await p.textContent('#einkauf-r2')).includes('keine Zutaten'), 'Rezept ohne Zutaten: klarer Hinweis');
   check(p.fehler.length === 0, 'Einkaufsliste: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 13. Nährwerte ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  check(!(await p.textContent('.rezept-karte >> nth=0')).includes('kcal'), 'Liste: ohne Nährwerte keine kcal');
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  check(await p.locator('#recipe-detail-r1 .reiter button').count() === 3, 'Drei Reiter');
+  const reiterOk = await p.evaluate(() => [...document.querySelectorAll('#recipe-detail-r1 .reiter button')].every(b => b.scrollWidth <= b.clientWidth + 1));
+  check(reiterOk, 'Reiterbeschriftungen passen auf 320 px');
+  await p.click('#recipe-detail-r1 .reiter >> text=Nährwerte'); await p.waitForTimeout(400);
+  check((p.nwAnfragen || []).length === 1, 'Reiter Nährwerte rechnet beim ersten Öffnen');
+  check((await p.textContent('#naehrwerte-r1 .nw-mitte')).includes('217'), 'Pro Portion: 1302 kcal / 6 = 217 kcal');
+  const leg = await p.locator('#naehrwerte-r1 .nw-legende').innerText();
+  check(leg.includes('34 g') && leg.includes('63 %') && leg.includes('5 %') && leg.includes('32 %'), 'Legende: 34 g Eiweiß, Anteile 63/5/32 % ' + JSON.stringify(leg));
+  check((await p.textContent('#recipe-detail-r1 .karte-meta')).includes('217 kcal pro Portion'), 'Kopfzeile der Karte zeigt kcal pro Portion');
+  check((await p.textContent('.rezept-karte >> nth=0')).includes('217 kcal'), 'Liste zeigt jetzt 217 kcal');
+  check((await p.textContent('#naehrwerte-r1')).includes('Bundeslebensmittelschlüssel'), 'Quelle BLS steht drunter');
+  check((await p.textContent('#naehrwerte-r1 .nw-egal')).includes('Salz'), 'Salz und Paprikapulver als "nicht mitgerechnet"');
+  check(await kein_seitlich(p, 320), 'Nährwerte: nichts ragt seitlich heraus');
+  await p.click('#naehrwerte-r1 summary'); await p.waitForTimeout(150);
+  check(await p.locator('#naehrwerte-r1 .nw-zeile').count() === 2, 'Aufschlüsselung: zwei gerechnete Zutaten');
+  check((await p.textContent('#naehrwerte-r1 .nw-zeile >> nth=1')).includes('1 Zwiebel ≈ 100 g'), 'Annahme wird gezeigt');
+  await p.screenshot({ path: OUT + '/n9_naehrwerte.png' });
+  // Gramm korrigieren
+  await p.click('#nw-gramm-r1-1 .menge-knopf'); await p.waitForTimeout(100);
+  await p.fill('#nw-gramm-r1-1 input', '450'); await p.press('#nw-gramm-r1-1 input', 'Enter'); await p.waitForTimeout(300);
+  check((await p.textContent('#naehrwerte-r1 .nw-mitte')).includes('226'), 'Zwiebeln auf 450 g: (1200+153)/6 = 226 kcal');
+  check(p.calls.some(c => c.startsWith('PATCH /rest/v1/recipes?id=eq.r1')), 'Korrektur wird am Rezept gespeichert');
+  const gelernt = (p.wissen || [])[0] || {};
+  check(gelernt.name_norm === 'zwiebeln' && gelernt.einheit_norm === '' && gelernt.gramm_pro_einheit === 150 && gelernt.quelle === 'hand', 'Skillet merkt sich: 1 Zwiebel = 150 g (von Hand) ' + JSON.stringify(gelernt));
+  check((await p.textContent('#naehrwerte-r1')).includes('von dir korrigiert'), 'Zeile zeigt "von dir korrigiert"');
+  // Wieder öffnen: keine neue Anfrage
+  await p.click('#rezept-ueberlagerung .karte-zu'); await p.waitForTimeout(300);
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r1 .reiter >> text=Nährwerte'); await p.waitForTimeout(300);
+  check((p.nwAnfragen || []).length === 1 && (await p.textContent('#naehrwerte-r1 .nw-mitte')).includes('226'), 'Aktuelle Nährwerte werden nicht neu angefragt');
+  // Fehlerfall: Rezept ohne Portionen, Gemini streikt
+  await p.click('#rezept-ueberlagerung .karte-zu'); await p.waitForTimeout(300);
+  p.nwFehler = true;
+  await p.click('.rezept-karte >> nth=1'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r2 .reiter >> text=Nährwerte'); await p.waitForTimeout(300);
+  check((await p.textContent('#naehrwerte-r2')).includes('keine Zutaten'), 'Rezept ohne Zutaten: Hinweis statt Anfrage');
+  await p.click('#rezept-ueberlagerung .karte-zu'); await p.waitForTimeout(300);
+  await p.evaluate(() => { const r = allRecipesCache.find(x => x.id === 'r3'); r.zutaten = '2 Eier\n100 g Mehl'; });
+  await p.click('.rezept-karte >> nth=2'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r3 .reiter >> text=Nährwerte'); await p.waitForTimeout(400);
+  check((await p.textContent('#naehrwerte-r3')).includes('nicht geklappt') && await p.locator('#naehrwerte-r3 >> text=Nochmal versuchen').count() === 1, 'Fehler: verständliche Meldung und "Nochmal versuchen"');
+  const letzte = p.nwAnfragen[p.nwAnfragen.length - 1];
+  check(JSON.stringify(letzte.zutaten) === JSON.stringify([{menge:2,einheit:null,name:'Eier'},{menge:100,einheit:'g',name:'Mehl'}]), 'Freitext-Zutaten werden zerlegt geschickt ' + JSON.stringify(letzte.zutaten));
+  p.nwFehler = false;
+  await p.click('#naehrwerte-r3 >> text=Nochmal versuchen'); await p.waitForTimeout(400);
+  check((await p.textContent('#naehrwerte-r3 .nw-mitte')).includes('326') && (await p.textContent('#naehrwerte-r3')).includes('Pro Portion (Rezept für 4)'), 'Nochmal versuchen klappt (4 Portionen: 326 kcal)');
+  check(p.fehler.length === 0, 'Nährwerte: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
   // ---- 11. Desktop: Kochmodus verborgen, Freestyle breit ----
