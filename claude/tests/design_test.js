@@ -28,7 +28,7 @@ async function neueSeite(browser, width, storage) {
     else if (u.includes('/functions/v1/naehrwerte')) {
       const anfrage = JSON.parse(req.postData() || '{}');
       page.nwAnfragen = (page.nwAnfragen || []).concat([anfrage]);
-      body = page.nwFehler ? { error: 'Gemini antwortet nicht' } : {
+      body = page.nwFehler ? { error: 'Error: Gemini: 503 UNAVAILABLE The model is overloaded. Please try again later.' } : {
         version: 1, stand: anfrage.stand, quelle: 'BLS 4.0', berechnet_am: '2026-10-11T12:00:00Z',
         summe: { kcal: 1302, eiweiss: 203.6, kh: 18.3, fett: 45.6 },
         zutaten: [
@@ -315,7 +315,9 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   await p.evaluate(() => { const r = allRecipesCache.find(x => x.id === 'r3'); r.zutaten = '2 Eier\n100 g Mehl'; });
   await p.click('.rezept-karte >> nth=2'); await p.waitForTimeout(300);
   await p.click('#recipe-detail-r3 .reiter >> text=Nährwerte'); await p.waitForTimeout(400);
-  check((await p.textContent('#naehrwerte-r3')).includes('nicht geklappt') && await p.locator('#naehrwerte-r3 >> text=Nochmal versuchen').count() === 1, 'Fehler: verständliche Meldung und "Nochmal versuchen"');
+  check((await p.textContent('#naehrwerte-r3')).includes('Gemini ist gerade überlastet') && await p.locator('#naehrwerte-r3 >> text=Nochmal versuchen').count() === 1, 'Fehler: verständliche Meldung ("überlastet") und "Nochmal versuchen"');
+  check(!(await p.isVisible('#naehrwerte-r3 .nw-technik div')) && (await p.textContent('#naehrwerte-r3 .nw-technik div')).includes('503'), 'Fehlercode nur eingeklappt unter "Technische Details"');
+  check(await p.evaluate(() => naehrwertFehlerText('Datenbank (zutat_wissen): 404 {"code":"PGRST205"}')) === 'Die Nährwert-Datenbank ist noch nicht eingerichtet.', 'Fehlende Tabelle: eigene Meldung');
   const letzte = p.nwAnfragen[p.nwAnfragen.length - 1];
   check(JSON.stringify(letzte.zutaten) === JSON.stringify([{menge:2,einheit:null,name:'Eier'},{menge:100,einheit:'g',name:'Mehl'}]), 'Freitext-Zutaten werden zerlegt geschickt ' + JSON.stringify(letzte.zutaten));
   p.nwFehler = false;

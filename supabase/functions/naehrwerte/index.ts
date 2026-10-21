@@ -53,7 +53,23 @@ Verwende nur Codes aus den Kandidaten.
 
 Antworte nur mit JSON: {"wahl":[{"i":0,"code":"G480100"}]}`;
 
+// Gemini ist zeitweise überlastet (503) oder kurz am Limit (429) - dann mit wachsender Pause neu versuchen
+const VORUEBERGEHEND = [429, 500, 503];
+
 async function gemini(system: string, daten: unknown) {
+  let letzterFehler = '';
+  for (let versuch = 0; versuch < 4; versuch++) {
+    if (versuch > 0) await new Promise(r => setTimeout(r, 1500 * 2 ** (versuch - 1)));
+    const ergebnis = await geminiEinmal(system, daten);
+    if (ergebnis.ok) return ergebnis.json;
+    letzterFehler = ergebnis.fehler;
+    console.log(`Gemini Versuch ${versuch + 1}: ${ergebnis.status} ${ergebnis.fehler}`);
+    if (!VORUEBERGEHEND.includes(ergebnis.status)) break;
+  }
+  throw new Error('Gemini: ' + letzterFehler);
+}
+
+async function geminiEinmal(system: string, daten: unknown) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODELL}:generateContent?key=${GEMINI_API_KEY}`,
     {
@@ -66,10 +82,14 @@ async function gemini(system: string, daten: unknown) {
       }),
     },
   );
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Keine gültige Antwort von Gemini: ' + JSON.stringify(data.error || data).slice(0, 300));
-  return JSON.parse(text);
+  if (res.ok && text) {
+    try { return { ok: true as const, json: JSON.parse(text) }; } catch (_) { /* kaputtes JSON: wie Fehler behandeln */ }
+    return { ok: false as const, status: 500, fehler: 'Antwort war kein gültiges JSON' };
+  }
+  const status = res.ok ? 500 : res.status;
+  return { ok: false as const, status, fehler: `${status} ${data.error?.status || ''} ${data.error?.message || 'leere Antwort'}`.slice(0, 300) };
 }
 
 async function rest(pfad: string, init: RequestInit = {}) {
@@ -190,6 +210,7 @@ Deno.serve(async (req) => {
     }
     return new Response(JSON.stringify({ ...naehrwerte, gelernt }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (err) {
+    console.log('Fehler: ' + String(err));
     return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

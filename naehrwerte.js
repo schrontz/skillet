@@ -66,9 +66,20 @@ async function berechneNaehrwerte(id) {
   } catch (e) {
     const el2 = document.getElementById(`naehrwerte-${id}`);
     if (el2) el2.innerHTML = `
-      <div class="muted" style="margin-bottom:0.5rem;">Das hat nicht geklappt: ${htmlSicher(e.message)}</div>
+      <div class="muted" style="margin-bottom:0.5rem;">${htmlSicher(naehrwertFehlerText(e.message))}</div>
+      <details class="nw-technik"><summary>Technische Details</summary><div>${htmlSicher(e.message)}</div></details>
       <button class="btn-umriss" onclick="berechneNaehrwerte('${id}')">Nochmal versuchen</button>`;
   }
+}
+
+// Verständliche Meldung statt Fehlercodes
+function naehrwertFehlerText(meldung) {
+  const m = String(meldung || '');
+  if (/overloaded|UNAVAILABLE|\b503\b|high demand/i.test(m)) return 'Gemini ist gerade überlastet. Versuch es in ein paar Minuten nochmal.';
+  if (/RESOURCE_EXHAUSTED|\b429\b|quota/i.test(m)) return 'Das Tageskontingent für Gemini ist gerade aufgebraucht. Versuch es später nochmal.';
+  if (/PGRST205|schema cache|does not exist/i.test(m)) return 'Die Nährwert-Datenbank ist noch nicht eingerichtet.';
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Keine Verbindung. Bist du online?';
+  return 'Die Berechnung hat nicht geklappt.';
 }
 
 // Eine Anfrage je Rezept gleichzeitig - der Hintergrund-Lauf nach dem Speichern und
