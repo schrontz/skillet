@@ -42,7 +42,12 @@ function motivatorLink(r) {
     .filter(x => x.status === 'ok' && x.bls_code && x.gramm > 0)
     .map(x => [x.bls_code, Math.round(x.gramm), String(x.name || '').slice(0, 60)]);
   if (z.length === 0) return null;
-  const json = JSON.stringify({ v: 1, t: r.titel || 'Rezept', p: r.basis_portionen || 1, z });
+  // Nicht erkannte Zutaten nur mit Namen und Menge – Motivator bietet an, sie selbst zu suchen
+  const u = (r.naehrwerte.zutaten || [])
+    .filter(x => x.status === 'nicht_gefunden' || x.status === 'unbekannt')
+    .map(x => [String(x.name || '').slice(0, 60), [x.menge, x.einheit].filter(v => v !== null && v !== undefined && v !== '').join(' ').slice(0, 20)])
+    .filter(x => x[0]);
+  const json = JSON.stringify({ v: 1, t: r.titel || 'Rezept', p: r.basis_portionen || 1, z, ...(u.length ? { u } : {}) });
   const bytes = new TextEncoder().encode(json);
   let s = '';
   for (const b of bytes) s += String.fromCharCode(b);
