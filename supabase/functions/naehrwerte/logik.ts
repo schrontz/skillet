@@ -19,14 +19,16 @@ const EINHEIT_SYNONYME: Record<string, string> = {
   'stück': '', stueck: '', stk: '', st: '',
   gramm: 'g', gr: 'g', g: 'g',
   kg: 'kg', kilo: 'kg', kilogramm: 'kg',
-  ml: 'ml', milliliter: 'ml', l: 'l', liter: 'l',
+  ml: 'ml', milliliter: 'ml', l: 'l', liter: 'l', cl: 'cl', zentiliter: 'cl', dl: 'dl', deziliter: 'dl',
   el: 'el', 'esslöffel': 'el', tl: 'tl', 'teelöffel': 'tl',
   dosen: 'dose', 'gläser': 'glas', zehen: 'zehe', scheiben: 'scheibe', prisen: 'prise',
   packungen: 'packung', 'päckchen': 'packung', pck: 'packung',
 };
 
-// Feste Umrechnungen - hier braucht es keine Schätzung
-export const FESTE_GRAMM: Record<string, number> = { g: 1, kg: 1000 };
+// Feste Umrechnungen - hier braucht es keine Schätzung.
+// Flüssigkeiten: 1 ml ≈ 1 g (Öl ist etwas leichter, Sirup schwerer - als Richtwert genau genug).
+// Vorher kamen ml/l aus der KI-Schätzung; einmal stand dort „100 g pro ml“ (100 ml Saft = 10 kg).
+export const FESTE_GRAMM: Record<string, number> = { g: 1, kg: 1000, ml: 1, cl: 10, dl: 100, l: 1000 };
 
 export function normName(name: string): string {
   return (name || '').toLowerCase().replace(/\s+/g, ' ').trim();

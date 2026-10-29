@@ -23,7 +23,8 @@ function naehrwertStand(r) {
     [z.menge ?? null, (z.einheit || '').trim().toLowerCase(), (z.name || '').trim().toLowerCase()]));
   let h = 5381;
   for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
-  return 'v1-' + h.toString(36) + '-' + text.length;
+  // v2: feste Umrechnung für ml/l (29.10.) – alte Ergebnisse werden beim Öffnen neu gerechnet
+  return 'v2-' + h.toString(36) + '-' + text.length;
 }
 
 function naehrwerteAktuell(r) {
@@ -292,9 +293,9 @@ async function speichereGramm(r, index, gramm) {
     await fetch(`${SUPABASE_URL}/rest/v1/recipes?id=eq.${r.id}`, {
       method: 'PATCH', headers: { ...kopf, Prefer: 'return=minimal' }, body: JSON.stringify({ naehrwerte: nw })
     });
-    // Bei g/kg ist die Umrechnung fest - da gibt es nichts zu lernen
+    // Bei g/kg/ml/l ist die Umrechnung fest - da gibt es nichts zu lernen
     const einheit = nwEinheitNorm(z.einheit);
-    if (einheit !== 'g' && einheit !== 'kg') {
+    if (!['g', 'kg', 'ml', 'cl', 'dl', 'l'].includes(einheit)) {
       await fetch(`${SUPABASE_URL}/rest/v1/zutat_wissen?on_conflict=name_norm,einheit_norm`, {
         method: 'POST',
         headers: { ...kopf, Prefer: 'resolution=merge-duplicates,return=minimal' },
@@ -313,7 +314,7 @@ function nwEinheitNorm(einheit) {
   const e = (einheit || '').toLowerCase().replace(/[.()]/g, '').trim();
   const syn = {
     'stück': '', stueck: '', stk: '', st: '', gramm: 'g', gr: 'g', kilo: 'kg', kilogramm: 'kg',
-    milliliter: 'ml', liter: 'l', 'esslöffel': 'el', 'teelöffel': 'tl', dosen: 'dose', 'gläser': 'glas',
+    milliliter: 'ml', liter: 'l', zentiliter: 'cl', deziliter: 'dl', 'esslöffel': 'el', 'teelöffel': 'tl', dosen: 'dose', 'gläser': 'glas',
     zehen: 'zehe', scheiben: 'scheibe', prisen: 'prise', packungen: 'packung', 'päckchen': 'packung', pck: 'packung'
   };
   return e in syn ? syn[e] : e;

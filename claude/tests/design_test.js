@@ -171,7 +171,7 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(p.calls.some(c => c.startsWith('DELETE /rest/v1/recipes?id=eq.r3')) && !(await sichtbar(p, '#rezept-ueberlagerung')), 'Löschen über ⋯ löscht und schließt die Karte');
 
   // ---- 4c. Nach dem Speichern rechnet Skillet die Nährwerte im Hintergrund ----
-  check((p.nwAnfragen || []).some(a => a.recipe_id === 'r1' && a.zutaten.length === 4 && /^v1-/.test(a.stand)), 'Nach dem Speichern: Nährwerte im Hintergrund angefragt (mit Zutaten und Stand)');
+  check((p.nwAnfragen || []).some(a => a.recipe_id === 'r1' && a.zutaten.length === 4 && /^v2-/.test(a.stand)), 'Nach dem Speichern: Nährwerte im Hintergrund angefragt (mit Zutaten und Stand)');
 
   // ---- 5. Zurück zum Start ----
   await p.click('#bereich-kopf .rund-knopf'); await p.waitForTimeout(300);

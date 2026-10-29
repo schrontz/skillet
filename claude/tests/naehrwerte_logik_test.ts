@@ -11,6 +11,10 @@ const g = rechneZutat({ menge: 500, einheit: 'g', name: 'Zwiebeln' }, w(7), zwie
 check(g.gramm === 500 && g.kcal === 170, 'Bei g zählt die feste Umrechnung, nicht die Schätzung');
 const kg = rechneZutat({ menge: 1.5, einheit: 'kg', name: 'Zwiebeln' }, w(null), zwiebel) as any;
 check(kg.gramm === 1500, 'kg -> 1500 g');
+const saft = rechneZutat({ menge: 100, einheit: 'ml', name: 'weißer Traubensaft' }, w(100), zwiebel) as any;
+check(saft.gramm === 100, '100 ml = 100 g, auch wenn die Schätzung „100 g pro ml“ sagt (Fehler vom 29.10.)');
+check((rechneZutat({ menge: 0.5, einheit: 'Liter', name: 'Brühe' }, w(null), zwiebel) as any).gramm === 500, '½ Liter = 500 g');
+check((rechneZutat({ menge: 4, einheit: 'cl', name: 'Sahne' }, w(null), zwiebel) as any).gramm === 40, '4 cl = 40 g');
 const ohne = rechneZutat({ menge: null, einheit: null, name: 'Sahne' }, w(20), zwiebel) as any;
 check(ohne.gramm === 20 && ohne.unsicher === true, 'Ohne Menge: Schätzung als Gesamtmenge, unsicher');
 const salz = rechneZutat({ menge: 1, einheit: 'Prise', name: 'Salz' }, w(0, null), undefined) as any;
