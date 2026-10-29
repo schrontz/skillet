@@ -404,4 +404,5 @@ async function handoffZuReflexion(recipeId, notiz) {
   }
   openSection('reflect');
   if (notiz) document.getElementById('beschreibung').value = notiz;
+  if (recipeId) zeigeMotivatorKarte(recipeId);
 }

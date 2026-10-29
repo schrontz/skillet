@@ -30,6 +30,62 @@ function naehrwerteAktuell(r) {
   return !!(r && r.naehrwerte && r.naehrwerte.summe && r.naehrwerte.stand === naehrwertStand(r));
 }
 
+// ---- Übergabe an Motivator ----
+// Ein Link mit Rezeptname, Portionen und den Zutaten (BLS-Code + Gramm fürs ganze Rezept).
+// Motivator rechnet daraus eine Portion, alle Nährwerte und die Pflanzen selbst – keine gemeinsame Datenbank.
+const MOTIVATOR_URL = 'https://schrontz.github.io/motivapp/';
+
+function motivatorLink(r) {
+  if (!naehrwerteAktuell(r)) return null;
+  const z = (r.naehrwerte.zutaten || [])
+    .filter(x => x.status === 'ok' && x.bls_code && x.gramm > 0)
+    .map(x => [x.bls_code, Math.round(x.gramm), String(x.name || '').slice(0, 60)]);
+  if (z.length === 0) return null;
+  const json = JSON.stringify({ v: 1, t: r.titel || 'Rezept', p: r.basis_portionen || 1, z });
+  const bytes = new TextEncoder().encode(json);
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return MOTIVATOR_URL + '#/essen-neu/s1.' + btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function motivatorKnopf(r) {
+  const url = motivatorLink(r);
+  return url ? `<a class="btn-umriss motivator-knopf" href="${url}" target="_blank" rel="noopener">Gegessen → in Motivator eintragen</a>` : '';
+}
+
+// Nach dem Kochen (Übergabe zur Reflexion): Karte oben – Link, oder erst die Nährwerte rechnen
+function zeigeMotivatorKarte(recipeId) {
+  document.getElementById('motivator-karte')?.remove();
+  const r = allRecipesCache.find(x => x.id === recipeId);
+  if (!r || naehrwertZutaten(r).length === 0) return;
+  const karte = document.createElement('div');
+  karte.className = 'card motivator-karte';
+  karte.id = 'motivator-karte';
+  const fertig = naehrwerteAktuell(r);
+  karte.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <b>Gegessen?</b>
+      <button type="button" class="btn-dezent" onclick="document.getElementById('motivator-karte').remove()" aria-label="Schließen">Später</button>
+    </div>
+    <div class="muted" style="font-size:0.85rem; margin:0.3rem 0 0;">Trag „${htmlSicher(r.titel)}“ in Motivator ein – Nährwerte und Pflanzen kommen mit.</div>
+    ${fertig ? motivatorKnopf(r) : `<button type="button" class="btn-umriss motivator-knopf" onclick="motivatorNachBerechnung('${recipeId}', this)">Nährwerte rechnen und eintragen</button>`}`;
+  document.getElementById('view-reflect').prepend(karte);
+}
+
+async function motivatorNachBerechnung(recipeId, knopf) {
+  const r = allRecipesCache.find(x => x.id === recipeId);
+  if (!r) return;
+  knopf.disabled = true;
+  knopf.textContent = 'Nährwerte werden berechnet …';
+  try {
+    r.naehrwerte = await naehrwerteAnfragen(r);
+    zeigeMotivatorKarte(recipeId);
+  } catch (e) {
+    knopf.disabled = false;
+    knopf.textContent = naehrwertFehlerText(e.message) + ' Nochmal?';
+  }
+}
+
 function kcalProPortion(r) {
   if (!naehrwerteAktuell(r) || !r.basis_portionen) return null;
   return Math.round(r.naehrwerte.summe.kcal / r.basis_portionen);
@@ -171,6 +227,7 @@ function renderNaehrwerte(id) {
       ${geschaetzt ? '<span class="nw-schaetzung">Mengen teils geschätzt</span>' : ''}
     </div>
     ${fehlt.length ? `<div class="nw-fehlt">Nicht gefunden, nicht mitgerechnet: ${fehlt.map(z => htmlSicher(z.name)).join(', ')}</div>` : ''}
+    ${motivatorKnopf(r)}
 
     <details class="nw-details">
       <summary>Woher die Werte kommen <span class="muted">(ganzes Rezept)</span></summary>
