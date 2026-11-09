@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <!-- Für Android: volle Fläche, Topf klein genug für die runde Sicherheitszone (Radius 40 %) -->
-  <rect width="512" height="512" fill="#b5522f"/>
+  <rect width="512" height="512" fill="#a3192b"/>
   <g fill="#f8f4ef" transform="translate(256 262) scale(0.8) translate(-256 -262)">
     <rect x="226" y="112" width="60" height="40" rx="16"/>
     <path d="M96 222 Q100 154 256 146 Q412 154 416 222 Q416 234 404 234 H108 Q96 234 96 222 Z"/>

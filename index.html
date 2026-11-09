@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Skillet – Koch-Skills</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#b5522f">
+<meta name="theme-color" content="#a3192b">
 <link rel="icon" href="icon-192.png">
 <style>
   :root {
@@ -13,10 +13,10 @@
     --card: #ffffff;
     --ink: #2b2420;
     --muted: #786f64;
-    --accent: #b5522f;
-    --accent-dark: #8f3f22;
-    --accent-light: #f1d9cd;
-    --panel: #f3e3d8;
+    --accent: #a3192b;
+    --accent-dark: #7a1220;
+    --accent-light: #f7dcdc;
+    --panel: #f4e1df;
     --ok: #4a7c59;
     --warn: #c9973a;
     --border: #e6ded3;
@@ -45,7 +45,7 @@
     background: var(--card); color: var(--accent-dark); font-size: 1.3rem; line-height: 1;
     display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.08); cursor: pointer;
   }
-  .rund-knopf:hover { background: #f6eee7; }
+  .rund-knopf:hover { background: #f6ecea; }
 
   /* ---- Startbildschirm: Kacheln ---- */
   .gruppe-titel {
@@ -74,7 +74,7 @@
     border-radius: 1rem; background: var(--accent); color: #fff; font-size: 0.82rem; font-weight: 700;
     display: grid; place-items: center;
   }
-  .k-kochen { background: #f6e2d6; } .k-rezepte { background: #f6ebdd; }
+  .k-kochen { background: #f6dcda; } .k-rezepte { background: #f5e9e4; }
   .start-kopf { flex-direction: column; align-items: flex-start; gap: 0.1rem; }
   .start-frage { margin: 0; font-size: 1.45rem; color: var(--accent-dark); line-height: 1.2; }
   .diktat-feld { min-height: 6.5rem; resize: vertical; }
@@ -93,7 +93,7 @@
     border-radius: 10px; padding: 0.75rem; font-size: 0.95rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; box-shadow: var(--schatten); cursor: pointer; margin-bottom: 0.7rem;
   }
-  .add-toggle:hover { background: #fdfaf7; }
+  .add-toggle:hover { background: #fdf9f8; }
   .abschnitt {
     font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     color: var(--muted); margin: 1rem 0 0.4rem;
@@ -170,7 +170,7 @@
   .rezept-detail { cursor: default; }
   .portion-steuerung {
     display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.92rem;
-    background: #faf3ee; border-radius: 10px; padding: 0.3rem 0.35rem; margin-bottom: 0.3rem;
+    background: #faf1f0; border-radius: 10px; padding: 0.3rem 0.35rem; margin-bottom: 0.3rem;
   }
   .mini-rund {
     width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 50%; background: var(--card); box-shadow: var(--schatten);
@@ -222,18 +222,18 @@
   .karte-meta a { color: var(--accent); text-decoration: none; white-space: nowrap; }
   .reiter { display: flex; gap: 0.3rem; margin-bottom: 0.9rem; }
   .reiter button {
-    flex: 1 1 0; min-width: 0; padding: 0.5rem 0.1rem; border-radius: 999px; border: 1.5px solid #e2d6cc;
+    flex: 1 1 0; min-width: 0; padding: 0.5rem 0.1rem; border-radius: 999px; border: 1.5px solid #e8d3d1;
     background: var(--card); color: var(--ink); font-size: 0.82rem; font-weight: 600; cursor: pointer; white-space: nowrap;
   }
   .reiter button.aktiv { background: var(--accent); border-color: var(--accent); color: #fff; }
   .menge-knopf {
-    padding: 0.1rem 0; border: none; border-bottom: 1px dashed #d8b9a8; border-radius: 0; background: none;
+    padding: 0.1rem 0; border: none; border-bottom: 1px dashed #d9b2b2; border-radius: 0; background: none;
     color: var(--accent-dark); font-size: 0.92rem; font-weight: 600; white-space: nowrap; cursor: pointer;
   }
   .karten-aktionen { display: flex; gap: 0.4rem; justify-content: flex-end; margin-top: 1rem; }
   .karten-aktionen .btn-haupt { flex: 1; margin-top: 0; }
   .ikon-knopf {
-    flex: none; width: 2.75rem; height: 2.75rem; padding: 0; border-radius: 10px; border: 1.5px solid #e2d6cc;
+    flex: none; width: 2.75rem; height: 2.75rem; padding: 0; border-radius: 10px; border: 1.5px solid #e8d3d1;
     background: var(--card); color: var(--accent-dark); font-size: 1.05rem; display: grid; place-items: center; cursor: pointer;
   }
   .ikon-knopf.an { background: var(--accent-light); border-color: var(--accent-light); }
@@ -244,7 +244,7 @@
 
   /* ---- Kochen: Auswahl-Karte ---- */
   .koch-wahl {
-    display: block; width: 100%; text-align: left; border: 1.5px solid #e2d6cc; border-radius: 14px;
+    display: block; width: 100%; text-align: left; border: 1.5px solid #e8d3d1; border-radius: 14px;
     padding: 0.8rem; margin: 0 0 0.6rem; background: var(--card); color: var(--ink); font: inherit;
   }
   .koch-wahl-kopf, .koch-wahl-frei { display: flex; gap: 0.7rem; align-items: center; }
@@ -346,9 +346,9 @@
   .fertig-pille { flex: 1 1 0; min-width: 0; border: 1.5px solid #4a3f37; border-radius: 999px; padding: 0.55rem 0.2rem; background: none; color: #f0ebe3; font-weight: 700; font-size: 0.92rem; cursor: pointer; white-space: nowrap; }
   .fertig-pille.an { background: var(--accent); border-color: var(--accent); color: #fff; }
   .fertig-info { font-size: 0.78rem; color: #b9ada2; margin-top: 0.45rem; }
-  .fertig-link { background: none; border: none; color: #e8b9a3; font-weight: 600; padding: 0; cursor: pointer; font-size: 0.92rem; }
+  .fertig-link { background: none; border: none; color: #eab3b6; font-weight: 600; padding: 0; cursor: pointer; font-size: 0.92rem; }
   .fertig textarea { width: 100%; min-height: 4.2rem; padding: 0.5rem 0.6rem; border-radius: 10px; border: 1px solid #4a3f37; background: #1a1512; color: #f0ebe3; font: inherit; font-size: 0.92rem; }
-  .fertig .motivator-knopf { display: block; width: 100%; text-align: center; background: none; border: 1.5px solid #e8b9a3; color: #f3d3c3; border-radius: 10px; padding: 0.6rem; font-weight: 700; text-decoration: none; }
+  .fertig .motivator-knopf { display: block; width: 100%; text-align: center; background: none; border: 1.5px solid #eab3b6; color: #f5cfd1; border-radius: 10px; padding: 0.6rem; font-weight: 700; text-decoration: none; }
   .fertig-knopf { width: 100%; padding: 0.85rem; border-radius: 12px; font-weight: 700; font-size: 1rem; margin-top: 0.3rem; cursor: pointer; }
 
   /* ---- Nährwerte (Reiter in der Rezept-Karte) ---- */
@@ -365,7 +365,7 @@
   .nw-legende span { width: 2.2rem; text-align: right; color: var(--muted); font-size: 0.74rem; }
   .nw-unter { font-size: 0.8rem; color: var(--muted); margin: 0.6rem 0 0; line-height: 1.4; }
   .nw-schaetzung { display: inline-block; margin-left: 0.2rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: #fff4e0; color: #8a6420; font-weight: 600; font-size: 0.74rem; }
-  .nw-fehlt { margin-top: 0.5rem; padding: 0.45rem 0.6rem; border-radius: 8px; background: #fbe9e4; color: var(--accent-dark); font-size: 0.8rem; }
+  .nw-fehlt { margin-top: 0.5rem; padding: 0.45rem 0.6rem; border-radius: 8px; background: #fbe6e6; color: var(--accent-dark); font-size: 0.8rem; }
   .nw-details { margin-top: 0.7rem; border-top: 1px solid var(--linie); padding-top: 0.5rem; }
   .nw-details summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--accent-dark); padding: 0.2rem 0; }
   .nw-zeile { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px solid var(--linie); font-size: 0.86rem; }
@@ -391,8 +391,8 @@
   .badge { padding: 2px 8px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
   .badge.erfuellt { background: #dcece0; color: var(--ok); }
   .badge.unklar { background: #f5ecd8; color: var(--warn); }
-  .badge.nicht_erfuellt { background: #f4dcd6; color: var(--accent); }
-  .fehler-liste { background: #fdf4ef; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 0.9rem; }
+  .badge.nicht_erfuellt { background: #f6d8d9; color: var(--accent); }
+  .fehler-liste { background: #fdf2f2; border-radius: 8px; padding: 10px 14px; margin-top: 10px; font-size: 0.9rem; }
   .rueckfrage-box { background: var(--accent-light); border-radius: 8px; padding: 14px; margin-top: 14px; }
   .progress-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--linie); }
   .progress-item:last-child { border-bottom: none; }

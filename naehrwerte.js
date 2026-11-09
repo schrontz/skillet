@@ -5,7 +5,7 @@
 // wird am Rezept gespeichert (recipes.naehrwerte). Ändern sich die Zutaten, passt der
 // "Stand" nicht mehr und es wird beim nächsten Öffnen neu gerechnet.
 
-const NW_FARBEN = { eiweiss: '#b5522f', kh: '#e0b25e', fett: '#6f8f5e' };
+const NW_FARBEN = { eiweiss: '#a3192b', kh: '#e0b25e', fett: '#6f8f5e' };
 const laufendeNaehrwerte = {};
 
 // Zutaten, wie sie gerechnet werden: strukturiert, sonst aus dem Freitext zerlegt
