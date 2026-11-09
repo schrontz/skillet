@@ -1,4 +1,6 @@
-// Teil von Skillet - Kochmodus (v1: ein Timer, Schritt-Navigation, Always-on Screen, Notiz-Handoff)
+// Teil von Skillet - Kochen: ein Modus für beides
+//   nach Rezept: Schritt für Schritt, Timer, Bildschirm bleibt an
+//   frei:        einfach erzählen, was man macht (ein Satz oder alles auf einmal) - am Ende wird daraus ein Rezept
 
 let kochmodusRezept = null;
 let kochmodusSchrittIndex = 0;
@@ -9,15 +11,51 @@ let timerEndAt = null; // Zeitstempel (ms), zu dem der Timer abläuft
 let alarmActive = false;
 let alarmSoundInterval = null;
 
+// ---- Notizen beim freien Kochen: bleiben auf dem Gerät, bis daraus ein Rezept gespeichert ist ----
+// (Schlüssel vom früheren Freestyle-Modus - schon diktierte Schritte gehen so nicht verloren)
+const FREI_NOTIZEN_KEY = 'skillet_freestyle_schnipsel';
+
+function ladeFreiNotizen() {
+  try { return JSON.parse(localStorage.getItem(FREI_NOTIZEN_KEY)) || []; } catch (e) { return []; }
+}
+
+function speichereFreiNotizen(liste) {
+  try { localStorage.setItem(FREI_NOTIZEN_KEY, JSON.stringify(liste)); } catch (e) { /* dann eben nur bis zum Neuladen */ }
+}
+
+function leereFreiNotizen() {
+  speichereFreiNotizen([]);
+}
+
+function freiNotizHinzufuegen() {
+  const feld = document.getElementById('frei-eingabe');
+  const text = (feld?.value || '').trim();
+  if (!text) { feld?.focus(); return; }
+  const liste = ladeFreiNotizen();
+  liste.push({ text, zeit: new Date().toISOString() });
+  speichereFreiNotizen(liste);
+  feld.value = '';
+  saveKochmodusSession();
+  renderKochmodusOverlay();
+  const notizen = document.getElementById('frei-notizen');
+  if (notizen) notizen.scrollTop = notizen.scrollHeight;
+}
+
+function freiNotizLoeschen(index) {
+  const liste = ladeFreiNotizen();
+  liste.splice(index, 1);
+  speichereFreiNotizen(liste);
+  renderKochmodusOverlay();
+}
+
 // ---- Session in localStorage merken, damit ein versehentliches Neuladen nicht alles verwirft ----
 function saveKochmodusSession() {
-  const notiz = document.getElementById('kochmodus-notiz')?.value || '';
   const session = {
     active: true,
     recipeId: kochmodusRezept ? kochmodusRezept.id : null,
     ohneRezept: kochmodusOhneRezept,
     schrittIndex: kochmodusSchrittIndex,
-    notiz,
+    entwurf: document.getElementById('frei-eingabe')?.value || '',
     timerEndAt
   };
   try { localStorage.setItem('skillet_kochmodus_session', JSON.stringify(session)); } catch (e) { /* egal, dann eben nicht */ }
@@ -25,6 +63,15 @@ function saveKochmodusSession() {
 
 function clearKochmodusSession() {
   try { localStorage.removeItem('skillet_kochmodus_session'); } catch (e) {}
+}
+
+async function ladeKochRezept(id) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten_strukturiert,anleitung,anleitung_schritte&id=eq.${id}`,
+    { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
+  );
+  const [r] = await res.json();
+  return r || null;
 }
 
 async function restoreKochmodusSessionIfAny() {
@@ -36,73 +83,92 @@ async function restoreKochmodusSessionIfAny() {
   try { session = JSON.parse(raw); } catch (e) { return; }
   if (!session || !session.active) return;
 
-  kochmodusOhneRezept = session.ohneRezept;
+  kochmodusOhneRezept = !!session.ohneRezept;
   kochmodusSchrittIndex = session.schrittIndex || 0;
   kochmodusRezept = null;
-
   if (session.recipeId) {
-    try {
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten_strukturiert,anleitung,anleitung_schritte&id=eq.${session.recipeId}`,
-        { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-      );
-      const [r] = await res.json();
-      kochmodusRezept = r || null;
-    } catch (e) { /* Rezept evtl. gelöscht - Kochmodus läuft dann einfach ohne Rezeptbezug weiter */ }
+    try { kochmodusRezept = await ladeKochRezept(session.recipeId); }
+    catch (e) { /* Rezept evtl. gelöscht - dann ohne Rezeptbezug weiter */ }
   }
 
   timerEndAt = (session.timerEndAt && session.timerEndAt > Date.now()) ? session.timerEndAt : null;
   if (timerEndAt) timerInterval = setInterval(tickTimer, 250);
 
-  renderKochmodusOverlay();
-  const notizFeld = document.getElementById('kochmodus-notiz');
-  if (notizFeld && session.notiz) notizFeld.value = session.notiz;
-
-  document.getElementById('kochmodus-overlay').style.display = 'flex';
-  requestWakeLock();
-  document.addEventListener('visibilitychange', handleVisibilityForWakeLock);
+  zeigeKochOverlay();
+  const feld = document.getElementById('frei-eingabe');
+  if (feld && session.entwurf) feld.value = session.entwurf;
 }
 
-// ---- Start-Ansicht ----
-function kochmodusMitRezept(mitRezept) {
-  document.getElementById('kochmodus-rezept-auswahl').style.display = mitRezept ? 'block' : 'none';
-  kochmodusOhneRezept = !mitRezept;
-  if (mitRezept) loadKochmodusRezepte();
+// ---- Einstieg: Karte "Kochen" - nach Rezept oder frei ----
+async function oeffneKochenKarte() {
+  const box = document.getElementById('kochen-auswahl');
+  const notizen = ladeFreiNotizen().length;
+  box.innerHTML = `
+    <div class="koch-wahl">
+      <div class="koch-wahl-kopf"><span class="koch-wahl-ico">📖</span><div><b>Nach Rezept</b><span>Schritt für Schritt, mit Timer</span></div></div>
+      <input type="search" id="koch-suche" placeholder="Rezept suchen …" oninput="renderKochRezeptListe()" autocomplete="off">
+      <div id="koch-rezepte" class="koch-rezepte"><div class="muted">Lade Rezepte …</div></div>
+    </div>
+    <button type="button" class="koch-wahl koch-wahl-frei" id="koch-frei-knopf" onclick="startFreiKochen()">
+      <span class="koch-wahl-ico">🎙️</span>
+      <div><b>Frei kochen</b><span>${notizen
+        ? `Weiter machen – ${notizen} ${notizen === 1 ? 'Notiz' : 'Notizen'} vom letzten Mal`
+        : 'Einfach erzählen, was du machst – wird am Ende zum Rezept'}</span></div>
+    </button>`;
+  zeigeRezeptKarte('kochen', 'Kochen');
+  if (!allRecipesCache.length) await loadRecipes();
+  renderKochRezeptListe();
 }
 
-async function loadKochmodusRezepte() {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=id,titel&order=erstellt_am.desc`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
-  });
-  const recipes = await res.json();
-  const select = document.getElementById('kochmodus-recipe-select');
-  select.innerHTML = recipes.map(r => `<option value="${r.id}">${r.titel}</option>`).join('');
+function renderKochRezeptListe() {
+  const el = document.getElementById('koch-rezepte');
+  if (!el) return;
+  const suche = (document.getElementById('koch-suche')?.value || '').trim().toLowerCase();
+  const treffer = allRecipesCache.filter(r => !suche || (r.titel || '').toLowerCase().includes(suche));
+  if (!allRecipesCache.length) { el.innerHTML = `<div class="muted">Noch keine Rezepte gespeichert.</div>`; return; }
+  if (!treffer.length) { el.innerHTML = `<div class="muted">Nichts gefunden.</div>`; return; }
+  el.innerHTML = treffer.slice(0, 30).map(r => {
+    const teile = [];
+    if (r.basis_portionen) teile.push(`${r.basis_portionen} Port.`);
+    const kcal = typeof kcalProPortion === 'function' ? kcalProPortion(r) : null;
+    if (kcal !== null) teile.push(`${kcal} kcal`);
+    return `<button type="button" class="koch-rezept" onclick="kochenMitRezept('${r.id}')">
+      <span>${htmlSicher(r.titel)}</span><small>${teile.join(' · ')}</small></button>`;
+  }).join('');
 }
 
-// ---- Kochmodus starten ----
-// direktRezeptId: wenn aus der Rezept-Detailansicht ("Kochen") gestartet
+function kochenMitRezept(id) {
+  rezeptKarteZu();
+  startKochmodus(id);
+}
+
+function startFreiKochen() {
+  rezeptKarteZu();
+  kochmodusOhneRezept = true;
+  startKochmodus();
+}
+
+// ---- Kochen starten ----
+// direktRezeptId: mit Rezept (aus der Kochen-Karte oder der Rezept-Karte); ohne: frei kochen
 async function startKochmodus(direktRezeptId) {
   kochmodusSchrittIndex = 0;
   kochmodusRezept = null;
-  if (direktRezeptId) kochmodusOhneRezept = false;
-
-  if (!kochmodusOhneRezept) {
-    const recipeId = direktRezeptId || document.getElementById('kochmodus-recipe-select').value;
-    if (recipeId) {
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/recipes?select=id,titel,zutaten_strukturiert,anleitung,anleitung_schritte&id=eq.${recipeId}`,
-        { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-      );
-      const [r] = await res.json();
-      kochmodusRezept = r;
-    }
+  if (direktRezeptId) {
+    kochmodusOhneRezept = false;
+    kochmodusRezept = await ladeKochRezept(direktRezeptId);
+  } else {
+    kochmodusOhneRezept = true;
   }
+  zeigeKochOverlay();
+  saveKochmodusSession();
+}
 
+function zeigeKochOverlay() {
   renderKochmodusOverlay();
   document.getElementById('kochmodus-overlay').style.display = 'flex';
   requestWakeLock();
+  document.removeEventListener('visibilitychange', handleVisibilityForWakeLock);
   document.addEventListener('visibilitychange', handleVisibilityForWakeLock);
-  saveKochmodusSession();
 }
 
 // ---- Schriftgröße an Textlänge anpassen, damit kein Text oben/unten abgeschnitten wird ----
@@ -114,86 +180,92 @@ function schrittFontSize(text) {
   return '1.6rem';
 }
 
+function zeitKurz(iso) {
+  try { return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; }
+}
+
 // ---- Overlay rendern ----
 function renderKochmodusOverlay() {
   const overlay = document.getElementById('kochmodus-overlay');
-  const hatSchritte = kochmodusRezept && kochmodusRezept.anleitung_schritte && kochmodusRezept.anleitung_schritte.length > 0;
-  const titel = kochmodusRezept ? kochmodusRezept.titel : 'Freies Kochen';
+  const entwurf = document.getElementById('frei-eingabe')?.value; // Eingabe überlebt das Neuzeichnen (z. B. Timer-Alarm)
+  const frei = kochmodusOhneRezept || !kochmodusRezept;
+  const titel = frei ? 'Frei kochen' : kochmodusRezept.titel;
 
-  let inhalt = '';
-  if (hatSchritte) {
-    const schritte = kochmodusRezept.anleitung_schritte;
-    const aktuell = schritte[kochmodusSchrittIndex];
-    const groesse = schrittFontSize(aktuell);
-    inhalt = `
-      <div style="text-align:center; font-size:0.9rem; opacity:0.7; margin-bottom:10px;">Schritt ${kochmodusSchrittIndex + 1} von ${schritte.length}</div>
-      <div style="font-size:${groesse}; text-align:center; padding:0 20px; line-height:1.4;">${aktuell}</div>
-    `;
-  } else if (kochmodusRezept && kochmodusRezept.anleitung) {
-    inhalt = `<div style="text-align:center; opacity:0.85; padding:0 20px; white-space:pre-wrap; font-size:1.05rem;">${kochmodusRezept.anleitung}</div>`;
+  const timerHtml = `
+    <div class="koch-timer">
+      <input type="number" id="timer-minuten" min="1" placeholder="Min" inputmode="numeric">
+      <button type="button" onclick="timerStart()">Start</button>
+      <span id="timer-anzeige">--:--</span>
+      <button type="button" onclick="timerReset()" aria-label="Timer zurücksetzen">↺</button>
+    </div>
+    ${alarmActive ? `<div class="koch-alarm" onclick="stopAlarm()">⏰ Timer fertig! Antippen zum Stoppen</div>` : ''}`;
+
+  let mitte = '';
+  let unten = '';
+  if (frei) {
+    const notizen = ladeFreiNotizen();
+    mitte = `
+      <div id="frei-notizen" class="frei-notizen">
+        ${notizen.length
+          ? notizen.map((n, i) => `
+            <div class="frei-notiz">
+              <div><small>${zeitKurz(n.zeit)}</small>${htmlSicher(n.text)}</div>
+              <button type="button" onclick="freiNotizLoeschen(${i})" aria-label="Notiz löschen">×</button>
+            </div>`).join('')
+          : `<div class="frei-leer">Erzähl einfach, was du machst – Satz für Satz oder alles auf einmal. Pausen sind egal.</div>`}
+      </div>`;
+    unten = `
+      <div class="frei-tipp">Tipp: Mikrofon-Taste der Tastatur 🎤</div>
+      <textarea id="frei-eingabe" class="frei-eingabe" placeholder="Was machst du gerade?" oninput="saveKochmodusSession()"></textarea>
+      <div class="koch-knoepfe">
+        <button type="button" class="koch-zweit" onclick="freiNotizHinzufuegen()">+ Notiz</button>
+        <button type="button" class="koch-haupt" id="koch-fertig" onclick="beendeKochmodus(true)">Fertig</button>
+      </div>
+      <div class="koch-status" id="koch-status"></div>`;
   } else {
-    inhalt = `<div style="text-align:center; opacity:0.7; padding:0 20px;">Kein Rezepttext hinterlegt.</div>`;
+    const schritte = kochmodusRezept.anleitung_schritte || [];
+    if (schritte.length) {
+      const aktuell = schritte[kochmodusSchrittIndex];
+      mitte = `
+        <div class="koch-mitte">
+          <div class="koch-schritt-nr">Schritt ${kochmodusSchrittIndex + 1} von ${schritte.length}</div>
+          <div class="koch-schritt" style="font-size:${schrittFontSize(aktuell)};">${htmlSicher(aktuell)}</div>
+        </div>
+        <div class="koch-pfeile">
+          <button type="button" onclick="kochmodusSchritt(-1)" aria-label="Schritt zurück">←</button>
+          <button type="button" onclick="kochmodusSchritt(1)" aria-label="Nächster Schritt">→</button>
+        </div>`;
+    } else {
+      mitte = `<div class="koch-mitte"><div class="koch-text">${htmlSicher(kochmodusRezept.anleitung) || 'Kein Rezepttext hinterlegt.'}</div></div>`;
+    }
+    unten = `<div class="koch-knoepfe"><button type="button" class="koch-haupt" onclick="beendeKochmodus(true)">Fertig</button></div>`;
   }
 
-  const zutatenHtml = (kochmodusRezept && kochmodusRezept.zutaten_strukturiert && kochmodusRezept.zutaten_strukturiert.length > 0)
-    ? `<details style="margin:10px 20px;">
-         <summary style="cursor:pointer; opacity:0.8;">Zutaten anzeigen</summary>
-         <div style="margin-top:8px; font-size:0.9rem; opacity:0.9;">
-           ${kochmodusRezept.zutaten_strukturiert.map(z => `<div>${[z.menge, z.einheit, z.name].filter(Boolean).join(' ')}</div>`).join('')}
-         </div>
+  const zutatenHtml = (!frei && kochmodusRezept.zutaten_strukturiert && kochmodusRezept.zutaten_strukturiert.length > 0)
+    ? `<details class="koch-zutaten">
+         <summary>Zutaten anzeigen</summary>
+         <div>${kochmodusRezept.zutaten_strukturiert.map(z => `<div>${htmlSicher([z.menge, z.einheit, z.name].filter(v => v !== null && v !== undefined && v !== '').join(' '))}</div>`).join('')}</div>
        </details>`
     : '';
 
   overlay.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px;">
-      <div style="font-weight:600;">${titel}</div>
-      <button onclick="beendeKochmodus(false)" style="width:auto; background:none; border:none; color:#f0ebe3; font-size:1.4rem; cursor:pointer; line-height:1;">×</button>
+    <div class="koch-kopf">
+      <div>${htmlSicher(titel)}</div>
+      <button type="button" onclick="beendeKochmodus(false)" aria-label="Kochen beenden">×</button>
     </div>
-
-    <div style="display:flex; align-items:center; justify-content:center; gap:10px; padding:0 20px 10px;">
-      <input type="number" id="timer-minuten" min="1" placeholder="Min" style="width:60px; padding:6px; border-radius:6px; border:1px solid #555; background:#2a2420; color:#f0ebe3;">
-      <button onclick="timerStart()" style="width:auto; padding:6px 14px; border-radius:6px; border:1px solid #555; background:none; color:#f0ebe3; cursor:pointer;">Start</button>
-      <span id="timer-anzeige" style="font-size:1.2rem; font-variant-numeric:tabular-nums; min-width:52px; text-align:center;">--:--</span>
-      <button onclick="timerReset()" style="width:auto; padding:6px 10px; border-radius:6px; border:1px solid #555; background:none; color:#f0ebe3; cursor:pointer;">↺</button>
-    </div>
-
-    ${alarmActive ? `
-      <div onclick="stopAlarm()" style="background:var(--accent); color:white; text-align:center; padding:14px; margin:0 20px 10px; border-radius:8px; font-weight:600; cursor:pointer;">
-        ⏰ Timer fertig! Antippen zum Stoppen
-      </div>
-    ` : ''}
-
+    ${timerHtml}
     ${zutatenHtml}
+    ${mitte}
+    ${unten}`;
 
-    <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow-y:auto; min-height:80px; padding:10px 0;">
-      ${inhalt}
-    </div>
-
-    <details style="margin:0 20px 10px;">
-      <summary style="cursor:pointer; opacity:0.8;">Notiz</summary>
-      <textarea id="kochmodus-notiz" placeholder="Fällt dir grad was auf?" oninput="saveKochmodusSession()" style="width:100%; min-height:60px; margin-top:8px; padding:8px; border-radius:6px; border:1px solid #555; background:#2a2420; color:#f0ebe3; font-family:inherit; box-sizing:border-box;"></textarea>
-    </details>
-
-    ${hatSchritte ? `
-      <div style="display:flex; height:90px;">
-        <button onclick="kochmodusSchritt(-1)" style="flex:1; background:#2a2420; border:none; border-top:1px solid #444; color:#f0ebe3; font-size:1.6rem; cursor:pointer;">←</button>
-        <button onclick="kochmodusSchritt(1)" style="flex:1; background:#2a2420; border:none; border-left:1px solid #444; border-top:1px solid #444; color:#f0ebe3; font-size:1.6rem; cursor:pointer;">→</button>
-      </div>
-    ` : ''}
-
-    <button onclick="beendeKochmodus(true)" class="primary" style="margin:10px 20px 20px;">Fertig – zur Reflexion</button>
-  `;
-
+  if (entwurf) document.getElementById('frei-eingabe').value = entwurf;
   updateTimerAnzeige();
 }
 
 function kochmodusSchritt(delta) {
   const schritte = kochmodusRezept.anleitung_schritte;
-  const notizVorher = document.getElementById('kochmodus-notiz')?.value || '';
   kochmodusSchrittIndex = Math.max(0, Math.min(schritte.length - 1, kochmodusSchrittIndex + delta));
   renderKochmodusOverlay();
-  const notizFeld = document.getElementById('kochmodus-notiz');
-  if (notizFeld) notizFeld.value = notizVorher; // Notiz bleibt beim Schritt-Wechsel erhalten
   saveKochmodusSession();
 }
 
@@ -299,10 +371,16 @@ function handleVisibilityForWakeLock() {
   }
 }
 
-// ---- Kochmodus beenden ----
-function beendeKochmodus(mitHandoff) {
-  const notiz = document.getElementById('kochmodus-notiz')?.value.trim() || '';
+// ---- Kochen beenden ----
+// mitAbschluss=false (×): einfach schließen - Notizen vom freien Kochen bleiben für später
+// mitAbschluss=true (Fertig): nach Rezept → Rezepte mit "Gegessen?"; frei → aus den Notizen ein Rezept machen
+async function beendeKochmodus(mitAbschluss) {
+  if (mitAbschluss && (kochmodusOhneRezept || !kochmodusRezept)) {
+    const ok = await freiZuRezept();
+    if (!ok) return; // Fehler: Kochbildschirm bleibt offen, nichts geht verloren
+  }
 
+  const rezeptId = kochmodusRezept ? kochmodusRezept.id : null;
   clearInterval(timerInterval);
   timerInterval = null;
   timerEndAt = null;
@@ -312,97 +390,43 @@ function beendeKochmodus(mitHandoff) {
   document.getElementById('kochmodus-overlay').style.display = 'none';
   clearKochmodusSession();
 
-  if (!mitHandoff) {
-    openSection('kochmodus');
-    return;
-  }
-
-  if (kochmodusRezept) {
-    handoffZuReflexion(kochmodusRezept.id, notiz);
-  } else {
-    fragRezeptDiktat(notiz);
+  if (mitAbschluss && rezeptId && !kochmodusOhneRezept) {
+    openSection('recipes');
+    if (typeof zeigeMotivatorKarte === 'function') zeigeMotivatorKarte(rezeptId);
   }
 }
 
-// ---- Nach rezeptlosem Kochen: fragen, ob daraus ein vollständiges Rezept werden soll ----
-function fragRezeptDiktat(notiz) {
-  window.pendingKochmodusNotiz = notiz;
-  openSection('recipes');
+// Notizen → Gemini → ausgefülltes Formular zum Prüfen. Gibt true zurück, wenn es weitergehen kann.
+async function freiZuRezept() {
+  // Was noch im Eingabefeld steht, gehört dazu
+  if ((document.getElementById('frei-eingabe')?.value || '').trim()) freiNotizHinzufuegen();
+  const notizen = ladeFreiNotizen();
+  if (notizen.length === 0) return true; // nichts notiert - einfach beenden
 
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.id = 'kochmodus-diktat-card';
-  card.innerHTML = `
-    <div style="margin-bottom:10px;">Du hast frei gekocht – möchtest du daraus ein Rezept machen?</div>
-    <div style="display:flex; gap:8px;">
-      <button onclick="starteRezeptDiktat()" class="primary" style="width:auto; flex:1; margin-top:0;">Ja, diktieren</button>
-      <button onclick="handoffOhneRezept()" style="width:auto; flex:1; background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer;">Nein, weiter zur Reflexion</button>
-    </div>
-  `;
-  document.getElementById('view-recipes').prepend(card);
-}
+  const status = document.getElementById('koch-status');
+  const knopf = document.getElementById('koch-fertig');
+  if (knopf) knopf.disabled = true;
+  if (status) status.textContent = 'Rezept wird zusammengesetzt …';
 
-function handoffOhneRezept() {
-  document.getElementById('kochmodus-diktat-card')?.remove();
-  handoffZuReflexion(null, window.pendingKochmodusNotiz || '');
-  window.pendingKochmodusNotiz = null;
-}
-
-function starteRezeptDiktat() {
-  const card = document.getElementById('kochmodus-diktat-card');
-  card.innerHTML = `
-    <div style="margin-bottom:8px; font-weight:600;">Diktier oder tippe dein Rezept</div>
-    <div class="muted" style="margin-bottom:8px; font-size:0.85rem;">Was hast du reingetan, wie viel, in welcher Reihenfolge? (Mikrofon-Taste deiner Tastatur nutzen)</div>
-    <textarea id="kochmodus-diktat-text" style="min-height:120px; width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-family:inherit; box-sizing:border-box;"></textarea>
-    <button class="primary" style="margin-top:10px;" onclick="extrahiereRezeptDiktat()">Rezept erstellen</button>
-    <div class="status-line" id="kochmodus-diktat-status"></div>
-  `;
-}
-
-async function extrahiereRezeptDiktat() {
-  const text = document.getElementById('kochmodus-diktat-text').value.trim();
-  if (!text) return;
-  const statusEl = document.getElementById('kochmodus-diktat-status');
-  statusEl.textContent = "Rezept wird erkannt...";
-
+  const text = 'Notizen in der Reihenfolge, in der gekocht wurde:\n' + notizen.map((n, i) => `${i + 1}. ${n.text}`).join('\n');
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-recipe-from-text`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
-    });
-    const data = await res.json();
-    if (data.error) { statusEl.textContent = "Fehler: " + data.error; return; }
-
-    document.getElementById('kochmodus-diktat-card')?.remove();
-
-    document.getElementById('recipe-titel-input').value = data.titel || "";
-    document.getElementById('recipe-portionen-input').value = data.basisPortionen || "";
-
-    clearZutatenRows();
-    (data.zutatenStrukturiert || []).forEach(z => addZutatRow(z.menge, z.einheit, z.name));
-    if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
-
-    clearSchritteRows();
-    (data.anleitungSchritte || []).forEach(s => addSchrittRow(s));
-    if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
-
-    window.pendingKochmodusHandoff = true; // signalisiert submitRecipe: nach dem Speichern zur Reflexion weiterleiten
-    zeigeRezeptFormular();
-    document.getElementById('recipe-status-line').textContent = "Bitte prüfen, dann unten speichern.";
+    const data = await rezeptTextAuswerten(text);
+    // Ein angefangenes Bearbeiten darf das neue Rezept nicht überschreiben
+    editingOriginalId = null;
+    editingCopyOf = null;
+    pendingImportUrl = null;
+    document.getElementById('edit-mode-banner').style.display = 'none';
+    formularAusAuswertung(data);
+    window.pendingFreiNotizenLoeschen = true; // erst nach dem Speichern löschen
+    setTimeout(() => {
+      zeigeRezeptFormular();
+      document.getElementById('rezept-import-block').style.display = 'none';
+      document.getElementById('recipe-status-line').textContent = 'Aus deinen Notizen – bitte prüfen, dann speichern.';
+    }, 0);
+    return true;
   } catch (e) {
-    statusEl.textContent = "Verbindungsfehler: " + e.message;
+    if (status) status.textContent = 'Das hat nicht geklappt: ' + e.message + ' – deine Notizen sind noch da.';
+    if (knopf) knopf.disabled = false;
+    return false;
   }
-}
-
-// ---- Übergabe an die Reflexion ----
-async function handoffZuReflexion(recipeId, notiz) {
-  await loadRecipesForReflect();
-  if (recipeId) {
-    document.getElementById('reflect-recipe-select').value = recipeId;
-    onReflectRecipeChange();
-  }
-  openSection('reflect');
-  if (notiz) document.getElementById('beschreibung').value = notiz;
-  if (recipeId) zeigeMotivatorKarte(recipeId);
 }

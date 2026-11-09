@@ -59,7 +59,7 @@ function motivatorKnopf(r) {
   return url ? `<a class="btn-umriss motivator-knopf" href="${url}" target="_blank" rel="noopener">Gegessen → in Motivator eintragen</a>` : '';
 }
 
-// Nach dem Kochen (Übergabe zur Reflexion): Karte oben – Link, oder erst die Nährwerte rechnen
+// Nach dem Kochen: Karte oben in den Rezepten – Link, oder erst die Nährwerte rechnen
 function zeigeMotivatorKarte(recipeId) {
   document.getElementById('motivator-karte')?.remove();
   const r = allRecipesCache.find(x => x.id === recipeId);
@@ -75,7 +75,7 @@ function zeigeMotivatorKarte(recipeId) {
     </div>
     <div class="muted" style="font-size:0.85rem; margin:0.3rem 0 0;">Trag „${htmlSicher(r.titel)}“ in Motivator ein – Nährwerte und Pflanzen kommen mit.</div>
     ${fertig ? motivatorKnopf(r) : `<button type="button" class="btn-umriss motivator-knopf" onclick="motivatorNachBerechnung('${recipeId}', this)">Nährwerte rechnen und eintragen</button>`}`;
-  document.getElementById('view-reflect').prepend(karte);
+  document.getElementById('view-recipes').prepend(karte);
 }
 
 async function motivatorNachBerechnung(recipeId, knopf) {

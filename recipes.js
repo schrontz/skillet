@@ -92,6 +92,7 @@
     document.getElementById('rezept-karte-titel').textContent = titel;
     document.getElementById('rezept-karte-detail').style.display = modus === 'detail' ? 'block' : 'none';
     document.getElementById('rezept-add-form').style.display = modus === 'formular' ? 'block' : 'none';
+    document.getElementById('kochen-auswahl').style.display = modus === 'kochen' ? 'block' : 'none';
     ueber.style.display = 'block';
     ueber.scrollTop = 0;
     document.body.classList.add('karte-offen');
@@ -138,6 +139,59 @@
   function zeigeRezeptFormular() {
     if (document.getElementById('view-recipes').style.display !== 'block') openSection('recipes');
     oeffneRezeptFormular();
+  }
+
+  // Kurzer Hinweis über der Liste, damit man sieht, dass das Speichern geklappt hat
+  function zeigeGespeichertHinweis(titel) {
+    const el = document.getElementById('detect-card');
+    if (!el) return;
+    el.innerHTML = `<div class="card muted gespeichert-hinweis">✅ „${htmlSicher(titel)}“ gespeichert.</div>`;
+    clearTimeout(zeigeGespeichertHinweis.timer);
+    zeigeGespeichertHinweis.timer = setTimeout(() => { el.innerHTML = ''; }, 5000);
+  }
+
+  // ---- Ganzes Rezept diktieren oder einfügen: Gemini sortiert in Titel, Zutaten, Schritte ----
+  // Wird auch beim freien Kochen genutzt (kochmodus.js), dort mit den gesammelten Notizen.
+  async function rezeptTextAuswerten(text) {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/extract-recipe-from-text`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+  function formularAusAuswertung(data) {
+    document.getElementById('recipe-titel-input').value = data.titel || '';
+    document.getElementById('recipe-portionen-input').value = data.basisPortionen || '';
+    clearZutatenRows();
+    (data.zutatenStrukturiert || []).forEach(z => addZutatRow(z.menge, z.einheit, z.name));
+    if (document.querySelectorAll('#zutaten-rows .zutat-row').length === 0) addZutatRow();
+    clearSchritteRows();
+    (data.anleitungSchritte || []).forEach(s => addSchrittRow(s));
+    if (document.querySelectorAll('#schritte-rows .schritt-row').length === 0) addSchrittRow();
+  }
+
+  async function rezeptAusDiktat() {
+    const feld = document.getElementById('rezept-diktat-input');
+    const text = feld.value.trim();
+    if (!text) { feld.focus(); return; }
+    const status = document.getElementById('rezept-diktat-status');
+    const btn = document.getElementById('rezept-diktat-btn');
+    btn.disabled = true;
+    status.textContent = 'Rezept wird zusammengesetzt …';
+    try {
+      formularAusAuswertung(await rezeptTextAuswerten(text));
+      feld.value = '';
+      status.textContent = '';
+      document.getElementById('recipe-status-line').textContent = 'Bitte prüfen, dann unten speichern.';
+      document.getElementById('recipe-titel-input').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e) {
+      status.textContent = 'Das hat nicht geklappt: ' + e.message;
+    }
+    btn.disabled = false;
   }
 
   // ---- Rezept von einer Webseite importieren ----
@@ -252,21 +306,15 @@
       editingCopyOf = null;
       pendingImportUrl = null;
       schliesseRezeptFormular();
-      statusLine.textContent = hinweisOriginalWeg
-        ? "Original wurde inzwischen gelöscht - als eigenständiges Rezept gespeichert. Erkenne Techniken..."
-        : "Gespeichert! Erkenne verwendete Techniken...";
-      loadRecipes();
-
-      if (window.pendingKochmodusHandoff) {
-        window.pendingKochmodusHandoff = false;
-        const notiz = window.pendingKochmodusNotiz || '';
-        window.pendingKochmodusNotiz = null;
-        setTimeout(() => handoffZuReflexion(savedRecipe.id, notiz), 600);
-      }
-
-      naehrwerteImHintergrund(savedRecipe);
-      await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
       statusLine.textContent = hinweisOriginalWeg ? "Gespeichert (ohne Kopie-Verweis, Original war weg)." : "Gespeichert!";
+      // Aus frei Gekochtem entstanden: die Notizen haben ihren Zweck erfüllt
+      if (window.pendingFreiNotizenLoeschen) {
+        window.pendingFreiNotizenLoeschen = false;
+        if (typeof leereFreiNotizen === 'function') leereFreiNotizen();
+      }
+      await loadRecipes();
+      zeigeGespeichertHinweis(savedRecipe.titel);
+      naehrwerteImHintergrund(savedRecipe);
     } catch (e) {
       statusLine.textContent = "Verbindungsfehler: " + e.message;
     }
@@ -312,12 +360,10 @@
     document.getElementById('edit-mode-banner').style.display = 'none';
     editingOriginalId = null;
     schliesseRezeptFormular();
-    statusLine.textContent = "Gespeichert! Erkenne verwendete Techniken...";
-    loadRecipes();
-    naehrwerteImHintergrund(savedRecipe);
-
-    await detectAndConfirmTechniques(savedRecipe, titel, zutaten, anleitung);
     statusLine.textContent = "Gespeichert!";
+    await loadRecipes();
+    zeigeGespeichertHinweis(savedRecipe.titel);
+    naehrwerteImHintergrund(savedRecipe);
     btn.disabled = false;
   }
 
@@ -343,94 +389,6 @@
         anleitung_schritte: schritteListe && schritteListe.length > 0 ? schritteListe : null
       })
     });
-  }
-
-  // ---- Techniken erkennen lassen und zur Bestätigung anzeigen ----
-
-  async function detectAndConfirmTechniques(recipe, titel, zutaten, anleitung) {
-    const detectCard = document.getElementById('detect-card');
-    detectCard.innerHTML = `<div class="card muted">Techniken werden erkannt...</div>`;
-
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/detect-techniques`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ recipe_id: recipe.id, titel, zutaten, anleitung })
-      });
-      const data = await res.json();
-
-      if (data.error) {
-        detectCard.innerHTML = `<div class="card">Erkennung fehlgeschlagen: ${data.error}</div>`;
-        return;
-      }
-
-      const erkannt = new Set(data.erkannte_technik_ids || []);
-      // techniques ist bereits global geladen (aus loadTechniques)
-      detectCard.innerHTML = `
-        <div class="card">
-          <div style="margin-bottom:10px;">Erkannte Techniken für <strong>${titel}</strong> – bitte prüfen:</div>
-          ${techniques.map(t => `
-            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; margin:0; color:var(--ink); font-size:0.92rem; cursor:pointer;">
-              <input type="checkbox" class="detect-checkbox" value="${t.id}" ${erkannt.has(t.id) ? 'checked' : ''}>
-              ${t.name}
-            </label>
-          `).join('')}
-          <button class="primary" onclick="confirmTechniques('${recipe.id}')">Bestätigen</button>
-        </div>
-      `;
-
-      if (data.neue_technik_vorschlag) {
-        renderNeueTechnikVorschlag(data.neue_technik_vorschlag, recipe.id);
-      }
-    } catch (e) {
-      detectCard.innerHTML = `<div class="card">Verbindungsfehler bei der Erkennung: ${e.message}</div>`;
-    }
-  }
-
-  // ---- Vorschlag für neue Technik anzeigen (Anlegen/Ignorieren) ----
-
-  async function confirmTechniques(recipeId) {
-    const checked = Array.from(document.querySelectorAll('.detect-checkbox:checked')).map(cb => cb.value);
-    const detectCard = document.getElementById('detect-card');
-
-    try {
-      // Bestehende Zuordnungen für dieses Rezept vorher entfernen - wichtig beim Bearbeiten
-      // des Originals, sonst gäbe es einen Konflikt mit schon vorhandenen Zuordnungen
-      await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques?recipe_id=eq.${recipeId}`, {
-        method: "DELETE",
-        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` }
-      });
-
-      if (checked.length === 0) {
-        detectCard.innerHTML = `<div class="card muted">Keine Techniken zugeordnet.</div>`;
-        return;
-      }
-
-      const rows = checked.map(technique_id => ({ recipe_id: recipeId, technique_id }));
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipe_techniques`, {
-        method: "POST",
-        headers: {
-          apikey: ANON_KEY,
-          Authorization: `Bearer ${ANON_KEY}`,
-          "Content-Type": "application/json",
-          Prefer: "return=minimal"
-        },
-        body: JSON.stringify(rows)
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        detectCard.innerHTML = `<div class="card">Fehler beim Speichern: ${err}</div>`;
-        return;
-      }
-
-      detectCard.innerHTML = `<div class="card muted">✅ ${rows.length} Technik(en) zugeordnet.</div>`;
-    } catch (e) {
-      detectCard.innerHTML = `<div class="card">Verbindungsfehler: ${e.message}</div>`;
-    }
   }
 
   // ---- Rezepte laden ----
@@ -533,8 +491,6 @@
           ${hatSchritte
             ? `<ol class="schritt-liste">${r.anleitung_schritte.map(s => `<li>${htmlSicher(s)}</li>`).join('')}</ol>`
             : `<div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.anleitung) || '<span class="muted">(keine Anleitung gespeichert)</span>'}</div>`}
-          <div class="abschnitt">Techniken</div>
-          <div id="recipe-techniques-${id}" class="chips"><span class="muted">Lade...</span></div>
         </div>
 
         <div class="reiter-inhalt" data-reiter="naehrwerte" id="naehrwerte-${id}" style="display:none;"></div>
@@ -548,7 +504,6 @@
         <div id="einkauf-${id}" class="einkauf-box" style="display:none;"></div>
         <div id="bearbeiten-wahl-${id}" class="karten-panel" style="display:none;">
           <div style="font-size:0.88rem;">Wie möchtest du bearbeiten?</div>
-          <div id="reflexions-hinweis-${id}"></div>
           <div class="aktionen">
             <button class="btn-klein" onclick="startEditOriginal('${id}')">Original ändern</button>
             <button class="btn-klein" onclick="startEditAsCopy('${id}')">Als Kopie</button>
@@ -564,7 +519,6 @@
       aktuellePortionen[id] = r.basis_portionen;
       renderZutatenListe(id);
     }
-    loadRecipeTechniquesForDetail(id);
   }
 
   function zeigeReiter(id, reiter) {
@@ -585,7 +539,6 @@
     document.getElementById(panels[welches]).style.display = 'block';
     document.querySelector(`#recipe-detail-${id} .ikon-knopf[data-panel="${welches}"]`).classList.add('an');
     if (welches === 'einkauf') renderEinkauf(id);
-    if (welches === 'bearbeiten') warnFallsReflektiert(id);
     document.getElementById(panels[welches]).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -661,34 +614,6 @@
     if (typeof renderEinkauf === 'function') renderEinkauf(id); // offene Einkaufsliste mit umrechnen
   }
 
-  // ---- Verknüpfte Techniken für die Detailansicht laden ----
-  async function loadRecipeTechniquesForDetail(recipeId) {
-    const el = document.getElementById(`recipe-techniques-${recipeId}`);
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/recipe_techniques?select=techniques(name)&recipe_id=eq.${recipeId}`,
-      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-    );
-    const rows = await res.json();
-    const names = rows.map(r => r.techniques?.name).filter(Boolean);
-    el.innerHTML = names.length
-      ? names.map(n => `<span class="chip">${htmlSicher(n)}</span>`).join('')
-      : '<span class="muted">(keine zugeordnet)</span>';
-  }
-
-  // ---- Hinweis, falls das Rezept schon reflektiert wurde (Original-Änderung würde den Verlauf "veralten") ----
-  async function warnFallsReflektiert(recipeId) {
-    const el = document.getElementById(`reflexions-hinweis-${recipeId}`);
-    if (!el) return;
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/reflections?select=id&recipe_id=eq.${recipeId}&limit=1`,
-      { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } }
-    );
-    const rows = await res.json();
-    if (rows.length > 0) {
-      el.innerHTML = `<div class="muted" style="font-size:0.8rem;">Schon reflektiert: Wenn du das Original änderst, bleibt dein Verlauf auf dem alten Stand. Bei größeren Änderungen ist eine Kopie klarer.</div>`;
-    }
-  }
-
   // ---- Bearbeiten als Kopie ODER direkt am Original ----
   let editingCopyOf = null;
   let editingOriginalId = null;
@@ -761,4 +686,3 @@
     loadRecipes();
   }
 
-  // ---- Techniken laden ----

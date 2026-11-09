@@ -3,7 +3,6 @@
   // Nach einem Neuladen ist keine Karte offen - alten Verlaufs-Eintrag dafür neutralisieren
   if (history.state && history.state.skilletKarte) history.replaceState({}, '');
 
-  loadTechniques();
   addZutatRow();
   addSchrittRow();
 

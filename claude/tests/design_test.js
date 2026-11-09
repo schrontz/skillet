@@ -24,7 +24,10 @@ async function neueSeite(browser, width, storage) {
     page.calls.push(m + ' ' + u.replace(/^.*supabase\.co/, ''));
     let body = [];
     if (u.includes('/functions/v1/import-recipe')) body = {source:'structured',titel:'Importiertes Rezept',zutaten:'2 Eier',zutatenStrukturiert:[{menge:2,einheit:null,name:'Eier'}],anleitung:'1. Braten',basisPortionen:2};
-    else if (u.includes('/functions/v1/extract-recipe-from-text')) body = {titel:'Diktiertes Rezept',zutatenStrukturiert:[{menge:2,einheit:null,name:'Zwiebeln'}],anleitungSchritte:['Zwiebeln schneiden','Anschwitzen'],basisPortionen:null};
+    else if (u.includes('/functions/v1/extract-recipe-from-text')) {
+      page.extraktTexte = (page.extraktTexte || []).concat([JSON.parse(req.postData() || '{}').text]);
+      body = page.extraktFehler ? { error: 'Gemini antwortet nicht' } : {titel:'Diktiertes Rezept',zutatenStrukturiert:[{menge:2,einheit:null,name:'Zwiebeln'}],anleitungSchritte:['Zwiebeln schneiden','Anschwitzen'],basisPortionen:null};
+    }
     else if (u.includes('/functions/v1/naehrwerte')) {
       const anfrage = JSON.parse(req.postData() || '{}');
       page.nwAnfragen = (page.nwAnfragen || []).concat([anfrage]);
@@ -66,11 +69,13 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(600);
   check(await sichtbar(p, '#start-view'), 'Erster Start zeigt den Startbildschirm');
   check(!(await sichtbar(p, '#bereich-kopf')), 'Kein Bereichskopf auf dem Start');
-  check((await p.textContent('#kachel-info-recipes')).includes('Gulasch nach Omas Art'), 'Rezepte-Kachel zeigt das neueste Rezept');
+  check((await p.textContent('.start-frage')) === 'Was kochst du heute?', 'Start fragt "Was kochst du heute?"');
+  check(await p.locator('#start-view .kachel').count() === 2, 'Nur noch zwei Kacheln: Kochen und Rezepte');
+  check(await p.locator('#kachel-reflect, #kachel-progress, #kachel-history, #view-reflect, #view-progress, #view-history').count() === 0, 'Lernteil (Reflektieren, Fortschritt, Verlauf) ist weg');
+  check((await p.textContent('#kachel-info-recipes')) === '3 gespeichert', 'Rezepte-Kachel: 3 gespeichert');
   check(await p.locator('#kachel-zahl-recipes').count() === 0, 'Rezepte-Kachel ohne Zahlen-Badge (nichts Offenes)');
-  check((await p.textContent('#kachel-info-progress')).includes('1 von 2'), 'Fortschritt-Kachel: 1 von 2 Techniken');
-  check((await p.textContent('#kachel-info-history')).includes('Deglasieren'), 'Verlauf-Kachel zeigt letzte Reflexion');
-  check(!(await sichtbar(p, '#kachel-zahl-freestyle')), 'Freestyle ohne offene Schritte: keine Zahl');
+  check(!(await sichtbar(p, '#kachel-zahl-kochen')) && (await p.textContent('#kachel-info-kochen')) === 'mit Rezept oder frei', 'Kochen ohne offene Notizen: keine Zahl');
+  check(!p.calls.some(c => /techniques|reflections|technique_progress/.test(c)), 'Keine Abfragen mehr an Techniken oder Reflexionen');
   check((await p.textContent('#start-datum')).length > 5, 'Datum steht im Kopf');
   check(await kein_seitlich(p, 320), 'Start: nichts ragt seitlich heraus');
   await p.screenshot({ path: OUT + '/n1_start.png', fullPage: true });
@@ -112,7 +117,7 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(await p.locator('#zutaten-liste-r1 input').count() === 0 && (await p.textContent('#zutaten-liste-r1 .menge-knopf >> nth=1')).trim() === '1,2', 'Ohne Änderung wegtippen: wieder Text, nichts umgerechnet');
   await p.click('#recipe-detail-r1 .reiter >> text=Zubereitung'); await p.waitForTimeout(200);
   check(await p.locator('#recipe-detail-r1 .schritt-liste li').count() === 3 && !(await sichtbar(p, '#zutaten-liste-r1')), 'Reiter Zubereitung: drei Schritte, Zutaten ausgeblendet');
-  check(await p.locator('#recipe-techniques-r1 .chip').count() === 2, 'Techniken als zwei Etiketten im Reiter Zubereitung');
+  check(await p.locator('#recipe-detail-r1 [id^="recipe-techniques"]').count() === 0, 'Keine Techniken mehr im Reiter Zubereitung');
   check(await kein_seitlich(p, 320), 'Karte: nichts ragt seitlich heraus');
   const kbox = await p.locator('.karte-schwebend').boundingBox();
   check(kbox.x >= 8 && kbox.x + kbox.width <= 312, 'Karte hat links und rechts Rand (' + Math.round(kbox.x) + ' px)');
@@ -142,7 +147,6 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   const laengeDetail = await p.evaluate(() => history.length);
   await p.click('#recipe-detail-r1 .ikon-knopf[data-panel="bearbeiten"]'); await p.waitForTimeout(300);
   check(await sichtbar(p, '#bearbeiten-wahl-r1'), '✎ zeigt die Wahl Original/Kopie');
-  check((await p.textContent('#reflexions-hinweis-r1')).includes('Schon reflektiert'), 'Hinweis bei schon reflektiertem Rezept');
   await p.click('#recipe-detail-r1 .ikon-knopf[data-panel="mehr"]'); await p.waitForTimeout(150);
   check(!(await sichtbar(p, '#bearbeiten-wahl-r1')) && await sichtbar(p, '#mehr-r1'), 'Immer nur ein Bereich unter der Knopfleiste offen');
   await p.click('#recipe-detail-r1 .ikon-knopf[data-panel="bearbeiten"]'); await p.waitForTimeout(300);
@@ -178,26 +182,80 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(await sichtbar(p, '#start-view'), '‹ führt zurück zum Start');
   check(!(await sichtbar(p, '#view-recipes')), 'Rezepte-Bereich ist ausgeblendet');
 
-  // ---- 6. Freestyle: Schritt hinzufügen, Zahl auf der Kachel ----
-  await p.click('#kachel-freestyle'); await p.waitForTimeout(200);
-  await p.fill('#freestyle-schnipsel-input', 'Zwei Zwiebeln geschnitten'); await p.click('text=+ Schritt hinzufügen');
-  await p.click('#bereich-kopf .rund-knopf'); await p.waitForTimeout(200);
-  check((await p.textContent('#kachel-zahl-freestyle')) === '1' && await sichtbar(p, '#kachel-zahl-freestyle'), 'Freestyle-Kachel zeigt 1 offenen Schritt');
-  await p.click('#kachel-freestyle'); await p.waitForTimeout(200);
-  await p.click('#freestyle-zusammensetzen-btn'); await p.waitForTimeout(500);
-  check((await p.textContent('#bereich-titel')) === 'Rezepte' && await sichtbar(p, '#rezept-add-form') && (await p.textContent('#rezept-karte-titel')) === 'Neues Rezept', 'Zusammensetzen öffnet Rezepte mit der Formular-Karte');
+  // ---- 6. Kochen-Karte: nach Rezept oder frei ----
+  await p.click('#kachel-kochen'); await p.waitForTimeout(400);
+  check(await sichtbar(p, '#kochen-auswahl') && (await p.textContent('#rezept-karte-titel')) === 'Kochen', 'Kachel "Kochen" öffnet die schwebende Karte "Kochen"');
+  check(await p.locator('#koch-rezepte .koch-rezept').count() === 3, 'Karte listet die Rezepte');
+  await p.fill('#koch-suche', 'jans'); await p.waitForTimeout(100);
+  check(await p.locator('#koch-rezepte .koch-rezept').count() === 1 && (await p.textContent('#koch-rezepte')).includes('Jans Gulasch'), 'Suche filtert die Rezepte');
+  await p.fill('#koch-suche', 'xyz'); await p.waitForTimeout(100);
+  check((await p.textContent('#koch-rezepte')).includes('Nichts gefunden'), 'Suche ohne Treffer: Hinweis');
+  await p.fill('#koch-suche', '');
+  check(await kein_seitlich(p, 320), 'Kochen-Karte: nichts ragt seitlich heraus');
+  await p.screenshot({ path: OUT + '/n5_kochen_karte.png' });
   await p.goBack(); await p.waitForTimeout(300);
-  check(await p.inputValue('#recipe-titel-input') === 'Diktiertes Rezept', 'Diktiertes Rezept im Formular');
+  check(!(await sichtbar(p, '#rezept-ueberlagerung')), 'Zurück schließt die Kochen-Karte');
 
-  // ---- 7. Lernen-Bereiche ----
-  for (const [kachel, titel, sel] of [['#kachel-reflect','Reflektieren','#beschreibung'],['#kachel-progress','Fortschritt','#progress-list .progress-item'],['#kachel-history','Verlauf','#history-list .progress-item']]) {
-    await p.evaluate(() => zeigeStart()); await p.waitForTimeout(150);
-    await p.click(kachel); await p.waitForTimeout(400);
-    check((await p.textContent('#bereich-titel')) === titel && await p.locator(sel).first().isVisible(), `${titel} öffnet sich und zeigt Inhalt`);
-    check(await kein_seitlich(p, 320), `${titel}: nichts ragt seitlich heraus`);
-  }
-  await p.screenshot({ path: OUT + '/n5_reflektieren.png', fullPage: false });
+  // ---- 7. Frei kochen: Notizen, auch alles auf einmal, am Ende ein Rezept ----
+  await p.click('#kachel-kochen'); await p.waitForTimeout(300);
+  await p.click('#koch-frei-knopf'); await p.waitForTimeout(400);
+  check(await sichtbar(p, '#kochmodus-overlay') && !(await sichtbar(p, '#rezept-ueberlagerung')), '"Frei kochen" öffnet den Kochbildschirm, Karte ist zu');
+  check((await p.textContent('#kochmodus-overlay .koch-kopf')).includes('Frei kochen') && await sichtbar(p, '#timer-minuten'), 'Kopf "Frei kochen", Timer ist da');
+  check(await p.evaluate(() => document.getElementById('frei-eingabe').tagName) === 'TEXTAREA', 'Eingabe ist mehrzeilig (Textfeld)');
+  await p.fill('#frei-eingabe', 'Zwei Zwiebeln geschnitten'); await p.click('text=+ Notiz'); await p.waitForTimeout(150);
+  const lang = 'Dann 500 g Hähnchen dazu, scharf angebraten.\nEine Dose Bohnen und eine Dose Tomaten rein, 20 Minuten köcheln lassen, am Ende ein Schuss Sahne.';
+  await p.fill('#frei-eingabe', lang); await p.click('text=+ Notiz'); await p.waitForTimeout(150);
+  check(await p.locator('.frei-notiz').count() === 2, 'Zwei Notizen – die zweite ist ein ganzer Absatz');
+  check((await p.textContent('.frei-notiz >> nth=1')).includes('Sahne') && await p.evaluate(() => getComputedStyle(document.querySelector('.frei-notiz > div')).whiteSpace) === 'pre-wrap', 'Langes Diktat bleibt als eine Notiz, Zeilenumbrüche bleiben');
+  await p.fill('#frei-eingabe', 'Noch nicht abgeschickt');
+  check(await kein_seitlich(p, 320), 'Frei kochen: nichts ragt seitlich heraus');
+  await p.screenshot({ path: OUT + '/n6b_frei.png' });
+  // Neuladen: alles wieder da
+  await p.reload(); await p.waitForTimeout(700);
+  check(await sichtbar(p, '#kochmodus-overlay') && await p.locator('.frei-notiz').count() === 2 && (await p.inputValue('#frei-eingabe')) === 'Noch nicht abgeschickt', 'Nach Neuladen: Kochbildschirm, Notizen und Entwurf sind wieder da');
+  // Notiz löschen
+  await p.click('.frei-notiz >> nth=0 >> button'); await p.waitForTimeout(100);
+  check(await p.locator('.frei-notiz').count() === 1 && (await p.inputValue('#frei-eingabe')) === 'Noch nicht abgeschickt', 'Notiz löschen, der Entwurf bleibt stehen');
+  // Fertig mit Fehler: bleibt offen
+  p.extraktFehler = true;
+  await p.click('#koch-fertig'); await p.waitForTimeout(400);
+  check(await sichtbar(p, '#kochmodus-overlay') && (await p.textContent('#koch-status')).includes('Notizen sind noch da') && await p.locator('.frei-notiz').count() === 2, 'Fehler beim Zusammensetzen: Bildschirm bleibt, Entwurf wurde zur Notiz, nichts verloren');
+  p.extraktFehler = false;
+  // Fertig: Rezept zusammensetzen
+  await p.click('#koch-fertig'); await p.waitForTimeout(600);
+  const extrakt = p.extraktTexte[p.extraktTexte.length - 1] || '';
+  check(extrakt.includes('1. Dann 500 g Hähnchen') && extrakt.includes('2. Noch nicht abgeschickt'), 'Gemini bekommt die Notizen in Reihenfolge');
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#rezept-add-form') && (await p.textContent('#rezept-karte-titel')) === 'Neues Rezept', 'Fertig: Formular-Karte mit dem neuen Rezept');
+  check(await p.inputValue('#recipe-titel-input') === 'Diktiertes Rezept' && !(await sichtbar(p, '#rezept-import-block')), 'Formular ausgefüllt, ohne Import-Feld');
+  check(await p.evaluate(() => ladeFreiNotizen().length) === 2, 'Notizen bleiben, bis das Rezept gespeichert ist');
+  await p.click('#recipe-submit-btn'); await p.waitForTimeout(600);
+  check(p.calls.some(c => c.startsWith('POST /rest/v1/recipes')) && await p.evaluate(() => ladeFreiNotizen().length) === 0, 'Nach dem Speichern: Rezept angelegt, Notizen geleert');
+  check(!p.calls.some(c => c.includes('detect-techniques')), 'Keine Technik-Erkennung mehr nach dem Speichern');
+  check((await p.textContent('#detect-card')).includes('gespeichert'), 'Hinweis "gespeichert" über der Liste');
   check(p.fehler.length === 0, 'Keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 7b. Ganzes Rezept diktieren im Formular ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('#rezept-add-toggle'); await p.waitForTimeout(300);
+  check(await sichtbar(p, '#rezept-diktat-input') && await p.evaluate(() => document.getElementById('rezept-diktat-input').tagName) === 'TEXTAREA', '"Neues Rezept": Feld zum Diktieren des ganzen Rezepts');
+  await p.fill('#rezept-diktat-input', 'Zwiebeln schneiden, anschwitzen, fertig. Zwei Zwiebeln.');
+  await p.click('#rezept-diktat-btn'); await p.waitForTimeout(500);
+  check(await p.inputValue('#recipe-titel-input') === 'Diktiertes Rezept' && await p.locator('#zutaten-rows .zutat-row').count() === 1 && await p.locator('#schritte-rows .schritt-row').count() === 2, 'Daraus wird Titel, Zutat und zwei Schritte');
+  check((await p.inputValue('#rezept-diktat-input')) === '' && (p.extraktTexte || []).includes('Zwiebeln schneiden, anschwitzen, fertig. Zwei Zwiebeln.'), 'Diktat wird geschickt und das Feld geleert');
+  await p.screenshot({ path: OUT + '/n4c_diktat.png' });
+  check(p.fehler.length === 0, 'Diktat: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 7c. Alter Stand im Speicher: Notizen aus Freestyle, letzter Bereich "Reflektieren" ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'reflect', skillet_freestyle_schnipsel: JSON.stringify([{ text: 'Alte Notiz', zeit: '2026-10-01T18:00:00Z' }]) });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  check(await sichtbar(p, '#start-view'), 'Gespeicherter Bereich "Reflektieren" gibt es nicht mehr: Start');
+  check((await p.textContent('#kachel-zahl-kochen')) === '1' && (await p.textContent('#kachel-info-kochen')).includes('1 Notiz offen'), 'Alte Freestyle-Notizen tauchen als offene Notiz bei Kochen auf');
+  await p.click('#kachel-kochen'); await p.waitForTimeout(300);
+  check((await p.textContent('#koch-frei-knopf')).includes('1 Notiz vom letzten Mal'), 'Kochen-Karte: "Weiter machen" mit der alten Notiz');
+  check(p.fehler.length === 0, 'Alter Stand: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
   // ---- 8. Neuladen merkt sich den Bereich ----
@@ -223,7 +281,19 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(await sichtbar(p, '#kochmodus-overlay'), '"Kochen" startet den Kochmodus');
   check(!(await sichtbar(p, '#rezept-ueberlagerung')), 'Rezept-Karte ist beim Kochen zu');
   check((await p.textContent('#kochmodus-overlay')).includes('Gulasch nach Omas Art') && (await p.textContent('#kochmodus-overlay')).includes('Schritt 1 von 3'), 'Kochmodus zeigt das gewählte Rezept, Schritt 1 von 3');
+  check(await p.locator('#kochmodus-overlay #kochmodus-notiz, #kochmodus-overlay #frei-eingabe').count() === 0, 'Nach Rezept: kein Notizfeld (kommt mit Etappe 2 zurück)');
+  await p.click('#kochmodus-overlay button[aria-label="Nächster Schritt"]'); await p.waitForTimeout(100);
+  check((await p.textContent('#kochmodus-overlay')).includes('Schritt 2 von 3'), 'Pfeil → nächster Schritt');
+  check(await kein_seitlich(p, 320), 'Kochen nach Rezept: nichts ragt seitlich heraus');
   await p.screenshot({ path: OUT + '/n6_kochmodus.png' });
+  await p.click('#kochmodus-overlay .koch-haupt'); await p.waitForTimeout(400);
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#view-recipes') && await sichtbar(p, '#motivator-karte'), 'Fertig: zurück zu den Rezepten mit "Gegessen?"-Karte');
+  check(!p.calls.some(c => /reflections|techniques/.test(c)), 'Keine Reflexion mehr nach dem Kochen');
+  await p.evaluate(() => document.getElementById('motivator-karte').remove());
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r1 >> text=Kochen'); await p.waitForTimeout(400);
+  await p.click('#kochmodus-overlay .koch-kopf button'); await p.waitForTimeout(300);
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await p.locator('#motivator-karte').count() === 0, '× schließt ohne "Gegessen?"-Karte');
   check(p.fehler.length === 0, 'Kochen: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
@@ -335,12 +405,12 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(p.fehler.length === 0, 'Ohne Spalte naehrwerte: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
-  // ---- 11. Desktop: Kochmodus verborgen, Freestyle breit ----
+  // ---- 11. Desktop: Kochen verborgen, Rezepte breit ----
   p = await neueSeite(browser, 1000);
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
-  check(!(await sichtbar(p, '#kachel-kochmodus')), 'Desktop: Kochmodus-Kachel verborgen');
-  const fb = await p.locator('#kachel-freestyle').boundingBox(), rb = await p.locator('#kachel-recipes').boundingBox();
-  check(Math.abs(fb.width - rb.width) < 2, 'Desktop: Freestyle-Kachel nutzt die volle Breite');
+  check(!(await sichtbar(p, '#kachel-kochen')), 'Desktop: Kochen-Kachel verborgen (Kochen ist fürs Handy)');
+  const rb = await p.locator('#kachel-recipes').boundingBox(), sb = await p.locator('.kachel-raster').boundingBox();
+  check(Math.abs(rb.width - sb.width) < 2, 'Desktop: Rezepte-Kachel nutzt die volle Breite');
   await p.click('#kachel-recipes'); await p.waitForTimeout(300); await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
   check(!(await sichtbar(p, '#recipe-detail-r1 >> text=Kochen')), 'Desktop: "Kochen"-Knopf verborgen');
   const dbox = await p.locator('.karte-schwebend').boundingBox();
