@@ -59,33 +59,25 @@ function motivatorKnopf(r) {
   return url ? `<a class="btn-umriss motivator-knopf" href="${url}" target="_blank" rel="noopener">Gegessen → in Motivator eintragen</a>` : '';
 }
 
-// Nach dem Kochen: Karte oben in den Rezepten – Link, oder erst die Nährwerte rechnen
-function zeigeMotivatorKarte(recipeId) {
-  document.getElementById('motivator-karte')?.remove();
+// Fertig-Bildschirm nach dem Kochen: Link in Motivator – oder erst die Nährwerte rechnen
+function motivatorBlockHtml(recipeId) {
   const r = allRecipesCache.find(x => x.id === recipeId);
-  if (!r || naehrwertZutaten(r).length === 0) return;
-  const karte = document.createElement('div');
-  karte.className = 'card motivator-karte';
-  karte.id = 'motivator-karte';
-  const fertig = naehrwerteAktuell(r);
-  karte.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-      <b>Gegessen?</b>
-      <button type="button" class="btn-dezent" onclick="document.getElementById('motivator-karte').remove()" aria-label="Schließen">Später</button>
-    </div>
-    <div class="muted" style="font-size:0.85rem; margin:0.3rem 0 0;">Trag „${htmlSicher(r.titel)}“ in Motivator ein – Nährwerte und Pflanzen kommen mit.</div>
-    ${fertig ? motivatorKnopf(r) : `<button type="button" class="btn-umriss motivator-knopf" onclick="motivatorNachBerechnung('${recipeId}', this)">Nährwerte rechnen und eintragen</button>`}`;
-  document.getElementById('view-recipes').prepend(karte);
+  if (!r || naehrwertZutaten(r).length === 0) return `<div class="fertig-info">Ohne Zutaten kann Skillet nichts an Motivator geben.</div>`;
+  return `<div id="fertig-motivator">${naehrwerteAktuell(r)
+    ? motivatorKnopf(r)
+    : `<button type="button" class="btn-umriss motivator-knopf" onclick="motivatorRechnen('${recipeId}', this)">Nährwerte rechnen und in Motivator eintragen</button>`}
+    <div class="fertig-info">Portion wählst du in Motivator.</div></div>`;
 }
 
-async function motivatorNachBerechnung(recipeId, knopf) {
+async function motivatorRechnen(recipeId, knopf) {
   const r = allRecipesCache.find(x => x.id === recipeId);
   if (!r) return;
   knopf.disabled = true;
   knopf.textContent = 'Nährwerte werden berechnet …';
   try {
     r.naehrwerte = await naehrwerteAnfragen(r);
-    zeigeMotivatorKarte(recipeId);
+    const box = document.getElementById('fertig-motivator');
+    if (box) box.outerHTML = motivatorBlockHtml(recipeId);
   } catch (e) {
     knopf.disabled = false;
     knopf.textContent = naehrwertFehlerText(e.message) + ' Nochmal?';

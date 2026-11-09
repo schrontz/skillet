@@ -312,6 +312,10 @@
         window.pendingFreiNotizenLoeschen = false;
         if (typeof leereFreiNotizen === 'function') leereFreiNotizen();
       }
+      if (window.pendingTagebuchEintrag) {
+        tagebuchMitRezeptVerbinden(window.pendingTagebuchEintrag, savedRecipe);
+        window.pendingTagebuchEintrag = null;
+      }
       await loadRecipes();
       zeigeGespeichertHinweis(savedRecipe.titel);
       naehrwerteImHintergrund(savedRecipe);
@@ -397,6 +401,7 @@
   async function loadRecipes() {
     const listEl = document.getElementById('recipe-list');
     listEl.innerHTML = `<div class="muted">Lade Rezepte...</div>`;
+    const tagebuchLaden = ladeTagebuch(true); // parallel: wann zuletzt gekocht, 👍
 
     const spalten = 'id,titel,zutaten,anleitung,anleitung_schritte,quelle_url,kopie_von,basis_portionen,zutaten_strukturiert,erstellt_am';
     const kopf = { headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` } };
@@ -405,12 +410,28 @@
     if (!res.ok) res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?select=${spalten}&order=erstellt_am.desc`, kopf);
     const data = await res.json();
     allRecipesCache = data;
+    await tagebuchLaden;
 
     if (!data.length) {
       listEl.innerHTML = `<div class="muted">Noch keine Rezepte gespeichert.</div>`;
+      document.getElementById('rezept-filter').innerHTML = '';
       return;
     }
 
+    renderRezeptListe();
+  }
+
+  // ---- Filter fürs Kochbuch ----
+  const REZEPT_FILTER = [
+    ['alle', 'Alle', () => true],
+    ['lieblinge', '👍 Lieblinge', s => s.bewertung === 'gern'],
+    ['lange', 'Lange her', s => s.anzahl > 0 && tageHer(s.zuletzt) >= 30],
+    ['neu', 'Nie gekocht', s => s.anzahl === 0]
+  ];
+  let rezeptFilter = 'alle';
+
+  function setzeRezeptFilter(wert) {
+    rezeptFilter = wert;
     renderRezeptListe();
   }
 
@@ -418,18 +439,34 @@
     const listEl = document.getElementById('recipe-list');
     const data = allRecipesCache;
     const titelById = Object.fromEntries(data.map(r => [r.id, r.titel]));
+    const [, , passt] = REZEPT_FILTER.find(f => f[0] === rezeptFilter) || REZEPT_FILTER[0];
 
-    listEl.innerHTML = data.map(r => `
+    document.getElementById('rezept-filter').innerHTML = REZEPT_FILTER.map(([wert, text]) =>
+      `<button type="button" class="filter-chip${wert === rezeptFilter ? ' an' : ''}" onclick="setzeRezeptFilter('${wert}')">${text}</button>`).join('');
+
+    const gefiltert = data.filter(r => passt(kochStatistik(r.id)));
+    if (!gefiltert.length) {
+      listEl.innerHTML = `<div class="muted leer-hinweis">${
+        rezeptFilter === 'lieblinge' ? 'Noch keine Lieblinge – nach dem Kochen bei „Wieder kochen?“ auf 👍 tippen.'
+        : rezeptFilter === 'lange' ? 'Nichts, was länger als einen Monat her ist.'
+        : 'Alles schon mal gekocht. 💪'}</div>`;
+      return;
+    }
+    listEl.innerHTML = gefiltert.map(r => {
+      const bew = kochStatistik(r.id).bewertung;
+      return `
       <div class="rezept-karte" data-id="${r.id}" onclick="oeffneRezept('${r.id}')">
-        <div class="rezept-titel">${htmlSicher(r.titel)}</div>
+        <div class="rezept-titel">${bew ? `<span class="rezept-bewertung" title="Wieder kochen?">${BEWERTUNG_ZEICHEN[bew]}</span>` : ''}${htmlSicher(r.titel)}</div>
         <div class="rezept-meta">${htmlSicher(rezeptMeta(r, titelById))}</div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
-  // Kurze Zusatzzeile unter dem Titel: Portionen, Herkunft
+  // Kurze Zusatzzeile unter dem Titel: wie oft gekocht, Portionen, Herkunft
   function rezeptMeta(r, titelById) {
     const teile = [];
+    const gekocht = kochMetaText(r.id);
+    if (gekocht) teile.push(gekocht);
     if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
     const kcal = kcalProPortion(r);
     if (kcal !== null) teile.push(`${kcal} kcal`);
@@ -443,6 +480,8 @@
   // Meta-Zeile in der Karte: wie in der Liste, die Quelle aber als Link
   function rezeptMetaHtml(r) {
     const teile = [];
+    const gekocht = kochMetaText(r.id);
+    if (gekocht) teile.push(gekocht);
     if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
     const kcal = kcalProPortion(r);
     if (kcal !== null) teile.push(`${kcal} kcal pro Portion`);
@@ -475,6 +514,7 @@
         </div>
 
         <div class="reiter-inhalt" data-reiter="zutaten">
+          ${zettelHtml(id, 'karte-zettel')}
           ${hatStrukturierteZutaten
             ? `<div class="portion-steuerung">
                  <button class="mini-rund" onclick="changePortionen('${id}', -1)" aria-label="weniger Portionen">−</button>

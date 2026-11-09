@@ -303,6 +303,54 @@
   }
   .frei-eingabe::placeholder { color: #8f8278; }
 
+  /* ---- Kochtagebuch: Vorschlag, Zuletzt gekocht, Filter, Zettel ---- */
+  .vorschlag { background: var(--card); border-radius: 16px; padding: 0.9rem; box-shadow: var(--schatten); margin-bottom: 0.4rem; }
+  .vorschlag-grund { display: inline-block; font-size: 0.75rem; font-weight: 600; color: #2f7d46; background: #e2f1e4; padding: 0.15rem 0.6rem; border-radius: 999px; }
+  .vorschlag-titel { display: block; width: 100%; text-align: left; padding: 0; border: none; background: none; font: inherit; font-size: 1.1rem; font-weight: 700; color: var(--ink); margin: 0.45rem 0 0.1rem; cursor: pointer; overflow-wrap: anywhere; }
+  .vorschlag-meta { font-size: 0.8rem; color: var(--muted); }
+  .vorschlag-knoepfe { display: flex; gap: 0.4rem; margin-top: 0.7rem; }
+  .vorschlag-knoepfe button { flex: 1 1 0; min-width: 0; margin: 0; padding: 0.6rem 0.3rem; }
+  .vorschlag-knoepfe .ikon-knopf { flex: none; width: 2.75rem; }
+  .weitere { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 0.5rem; margin-bottom: 0.4rem; }
+  .weitere button { text-align: left; background: var(--card); border: none; border-radius: 12px; padding: 0.6rem 0.7rem; box-shadow: var(--schatten); font: inherit; font-size: 0.88rem; color: var(--ink); cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+  .weitere button span { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.15rem; }
+  .zuletzt { background: var(--card); border-radius: 14px; box-shadow: var(--schatten); padding: 0.2rem 0.8rem; }
+  .zuletzt-zeile { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; width: 100%; padding: 0.55rem 0; border: none; border-bottom: 1px solid var(--linie); background: none; font: inherit; font-size: 0.92rem; color: var(--ink); text-align: left; cursor: pointer; }
+  .zuletzt-zeile:last-child { border-bottom: none; }
+  .zuletzt-zeile span:first-child { min-width: 0; overflow-wrap: anywhere; }
+  .zuletzt-zeile small { flex: none; color: var(--muted); font-size: 0.75rem; }
+  .filter-reihe { display: flex; gap: 0.35rem; overflow-x: auto; margin-bottom: 0.6rem; padding-bottom: 2px; }
+  .filter-chip { flex: none; white-space: nowrap; border: none; border-radius: 999px; padding: 0.35rem 0.75rem; background: var(--card); color: var(--ink); font: inherit; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+  .filter-chip.an { background: var(--accent); color: #fff; }
+  .rezept-bewertung { float: right; margin-left: 0.4rem; font-size: 0.9rem; }
+  .leer-hinweis { padding: 0.6rem 0.2rem; font-size: 0.88rem; }
+  .karte-zettel { background: #fff8e8; border-radius: 10px; padding: 0.55rem 0.7rem; margin-bottom: 0.7rem; font-size: 0.85rem; color: #6b5420; }
+  .karte-zettel span, .koch-zettel span { font-size: 0.75rem; opacity: 0.8; }
+  .karte-zettel div, .koch-zettel div { margin-top: 0.15rem; color: var(--ink); white-space: pre-wrap; }
+  .koch-zettel { margin: 0 1.2rem 0.5rem; background: #3a2f1c; border-radius: 10px; padding: 0.55rem 0.75rem; font-size: 0.85rem; color: #e8c97a; }
+  .koch-zettel div { color: #f0ebe3; }
+  .koch-anders-box { margin: 0 1.2rem 0.2rem; }
+  .koch-anders-box summary { cursor: pointer; color: #b9ada2; font-size: 0.9rem; padding: 0.3rem 0; }
+  .koch-anders-box textarea { width: 100%; min-height: 4rem; margin-top: 0.3rem; padding: 0.5rem 0.6rem; border-radius: 10px; border: 1px solid #4a3f37; background: #2a221d; color: #f0ebe3; font: inherit; font-size: 0.92rem; }
+
+  /* ---- Fertig-Bildschirm ---- */
+  .fertig-zurueck { font-size: 0.9rem !important; color: #b9ada2 !important; }
+  .fertig { flex: 1; overflow-y: auto; padding: 0.4rem 1.2rem 1.2rem; text-align: center; }
+  .fertig-ico { font-size: 2.4rem; }
+  .fertig h3 { font-size: 1.5rem; margin: 0.3rem 0 0.1rem; }
+  .fertig-gericht { color: #b9ada2; font-size: 0.92rem; margin-bottom: 1rem; overflow-wrap: anywhere; }
+  .fertig-block { background: #2a221d; border-radius: 14px; padding: 0.8rem; margin-bottom: 0.6rem; text-align: left; }
+  .fertig-frage { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.55rem; }
+  .fertig-frage span { font-weight: 400; color: #b9ada2; font-size: 0.8rem; }
+  .fertig-pillen { display: flex; gap: 0.4rem; }
+  .fertig-pille { flex: 1 1 0; min-width: 0; border: 1.5px solid #4a3f37; border-radius: 999px; padding: 0.55rem 0.2rem; background: none; color: #f0ebe3; font-weight: 700; font-size: 0.92rem; cursor: pointer; white-space: nowrap; }
+  .fertig-pille.an { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fertig-info { font-size: 0.78rem; color: #b9ada2; margin-top: 0.45rem; }
+  .fertig-link { background: none; border: none; color: #e8b9a3; font-weight: 600; padding: 0; cursor: pointer; font-size: 0.92rem; }
+  .fertig textarea { width: 100%; min-height: 4.2rem; padding: 0.5rem 0.6rem; border-radius: 10px; border: 1px solid #4a3f37; background: #1a1512; color: #f0ebe3; font: inherit; font-size: 0.92rem; }
+  .fertig .motivator-knopf { display: block; width: 100%; text-align: center; background: none; border: 1.5px solid #e8b9a3; color: #f3d3c3; border-radius: 10px; padding: 0.6rem; font-weight: 700; text-decoration: none; }
+  .fertig-knopf { width: 100%; padding: 0.85rem; border-radius: 12px; font-weight: 700; font-size: 1rem; margin-top: 0.3rem; cursor: pointer; }
+
   /* ---- Nährwerte (Reiter in der Rezept-Karte) ---- */
   .nw-oben { display: flex; align-items: center; gap: 0.7rem; }
   .nw-kreis { position: relative; flex: none; width: 6.4rem; height: 6.4rem; border-radius: 50%; }
@@ -377,6 +425,8 @@
       <h1 class="start-frage">Was kochst du heute?</h1>
     </div>
 
+    <div id="start-vorschlag"></div>
+
     <div class="kachel-raster">
       <button type="button" class="kachel k-kochen" id="kachel-kochen" onclick="oeffneKochenKarte()">
         <span class="kachel-zahl" id="kachel-zahl-kochen" style="display:none;"></span>
@@ -388,6 +438,8 @@
         <span class="kachel-name">Rezepte</span><span class="kachel-info" id="kachel-info-recipes"></span>
       </button>
     </div>
+
+    <div id="start-zuletzt"></div>
   </div>
 
   <!-- KOPFZEILE IN JEDEM BEREICH -->
@@ -400,6 +452,7 @@
   <div id="view-recipes" class="tab-panel" style="display:none;">
     <button type="button" class="add-toggle" id="rezept-add-toggle" onclick="oeffneNeuesRezept()">+ Rezept hinzufügen</button>
     <div id="detect-card"></div>
+    <div id="rezept-filter" class="filter-reihe"></div>
     <div id="recipe-list"><div class="muted">Lade Rezepte...</div></div>
   </div>
 
@@ -467,6 +520,7 @@
 <script src="recipes.js"></script>
 <script src="einkauf.js"></script>
 <script src="naehrwerte.js"></script>
+<script src="tagebuch.js"></script>
 <script src="kochmodus.js"></script>
 <script src="start.js"></script>
 <script src="init.js"></script>

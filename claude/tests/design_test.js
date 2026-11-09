@@ -42,6 +42,18 @@ async function neueSeite(browser, width, storage) {
         ]
       };
     }
+    else if (u.includes('/kochtagebuch')) {
+      page.tagebuch = page.tagebuch || [];
+      if (m === 'GET') body = [...page.tagebuch].sort((a, b) => (a.gekocht_am < b.gekocht_am ? 1 : -1));
+      else if (m === 'POST') {
+        if (page.tagebuchFehler) { route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"kaputt"}' }); return; }
+        const neu = { id: 'kt' + (page.tagebuch.length + 1), gekocht_am: new Date().toISOString(), ...JSON.parse(req.postData() || '{}') };
+        page.tagebuch.push(neu); page.tagebuchPosts = (page.tagebuchPosts || []).concat([neu]); body = [neu];
+      } else if (m === 'PATCH') {
+        const id = u.match(/id=eq\.([^&]+)/)[1]; const e = page.tagebuch.find(x => x.id === id);
+        Object.assign(e, JSON.parse(req.postData() || '{}')); page.tagebuchPatches = (page.tagebuchPatches || []).concat([{ id, ...JSON.parse(req.postData() || '{}') }]); body = [];
+      }
+    }
     else if (u.includes('zutat_wissen')) { page.wissen = (page.wissen || []).concat([JSON.parse(req.postData() || '{}')]); body = []; }
     else if (u.includes('/functions/v1/detect-techniques')) body = {erkannte_technik_ids:['t1'],neue_technik_vorschlag:null};
     else if (u.includes('recipe_techniques')) body = m === 'GET' ? [{techniques:{name:'Scharf anbraten (Sautieren)'}},{techniques:{name:'Deglasieren'}}] : [];
@@ -58,6 +70,14 @@ async function neueSeite(browser, width, storage) {
   });
   return page;
 }
+const tageZurueck = (t) => new Date(Date.now() - t * 864e5).toISOString();
+const beispielTagebuch = () => [
+  { id: 'a1', recipe_id: 'r1', titel: 'Gulasch nach Omas Art', frei: false, gekocht_am: tageZurueck(35), bewertung: 'gern', notiz: 'Etwas zu flüssig – weniger Brühe' },
+  { id: 'a2', recipe_id: 'r1', titel: 'Gulasch nach Omas Art', frei: false, gekocht_am: tageZurueck(80), bewertung: null, notiz: null },
+  { id: 'a3', recipe_id: 'r1', titel: 'Gulasch nach Omas Art', frei: false, gekocht_am: tageZurueck(120), bewertung: 'geht_so', notiz: null },
+  { id: 'a4', recipe_id: 'r2', titel: 'Jans Gulasch', frei: false, gekocht_am: tageZurueck(2), bewertung: null, notiz: null },
+  { id: 'a5', recipe_id: null, titel: 'Frei gekocht', frei: true, gekocht_am: tageZurueck(1), bewertung: 'gern', notiz: null }
+];
 const kein_seitlich = async (page, w) => (await page.evaluate(() => document.documentElement.scrollWidth)) <= w;
 const sichtbar = (page, sel) => page.isVisible(sel);
 
@@ -216,23 +236,51 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   // Notiz löschen
   await p.click('.frei-notiz >> nth=0 >> button'); await p.waitForTimeout(100);
   check(await p.locator('.frei-notiz').count() === 1 && (await p.inputValue('#frei-eingabe')) === 'Noch nicht abgeschickt', 'Notiz löschen, der Entwurf bleibt stehen');
-  // Fertig mit Fehler: bleibt offen
+  // Fertig → Fertig-Bildschirm
+  await p.click('#koch-fertig'); await p.waitForTimeout(300);
+  check((await p.textContent('#kochmodus-overlay .fertig')).includes('Fertig!') && (await p.textContent('.fertig-gericht')) === 'Frei gekocht', 'Fertig öffnet den Fertig-Bildschirm');
+  check(await p.locator('.frei-notiz').count() === 0 && await p.evaluate(() => ladeFreiNotizen().length) === 2, 'Entwurf wurde zur Notiz (2 Notizen)');
+  check((await p.textContent('.fertig')).includes('Als Rezept speichern?') && (await p.textContent('.fertig-pille.an >> nth=0')).includes('Ja, speichern'), 'Frei gekocht: "Als Rezept speichern?" mit Ja vorausgewählt');
+  check(await p.locator('#fertig-motivator').count() === 0, 'Frei gekocht: noch kein "Gegessen → Motivator" (es gibt noch kein Rezept)');
+  check(await kein_seitlich(p, 320), 'Fertig-Bildschirm: nichts ragt seitlich heraus');
+  await p.screenshot({ path: OUT + '/n6c_fertig_frei.png' });
+  await p.click('.fertig-pille >> text=Gern'); await p.waitForTimeout(100);
+  // Zusammensetzen schlägt fehl: bleibt, Eintrag nicht doppelt
   p.extraktFehler = true;
-  await p.click('#koch-fertig'); await p.waitForTimeout(400);
-  check(await sichtbar(p, '#kochmodus-overlay') && (await p.textContent('#koch-status')).includes('Notizen sind noch da') && await p.locator('.frei-notiz').count() === 2, 'Fehler beim Zusammensetzen: Bildschirm bleibt, Entwurf wurde zur Notiz, nichts verloren');
+  await p.click('#fertig-speichern'); await p.waitForTimeout(500);
+  check(await sichtbar(p, '#kochmodus-overlay') && (await p.textContent('#fertig-status')).includes('Notizen sind noch da'), 'Fehler beim Zusammensetzen: Fertig-Bildschirm bleibt, Notizen sind noch da');
+  check((p.tagebuchPosts || []).length === 1 && p.tagebuchPosts[0].frei === true && p.tagebuchPosts[0].bewertung === 'gern' && p.tagebuchPosts[0].recipe_id === null, 'Tagebuch: frei gekocht mit 👍 eingetragen');
   p.extraktFehler = false;
-  // Fertig: Rezept zusammensetzen
-  await p.click('#koch-fertig'); await p.waitForTimeout(600);
+  await p.click('#fertig-speichern'); await p.waitForTimeout(600);
+  check((p.tagebuchPosts || []).length === 1, 'Zweiter Versuch trägt nicht doppelt ins Tagebuch ein');
   const extrakt = p.extraktTexte[p.extraktTexte.length - 1] || '';
   check(extrakt.includes('1. Dann 500 g Hähnchen') && extrakt.includes('2. Noch nicht abgeschickt'), 'Gemini bekommt die Notizen in Reihenfolge');
-  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#rezept-add-form') && (await p.textContent('#rezept-karte-titel')) === 'Neues Rezept', 'Fertig: Formular-Karte mit dem neuen Rezept');
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#rezept-add-form') && (await p.textContent('#rezept-karte-titel')) === 'Neues Rezept', 'Dann: Formular-Karte mit dem neuen Rezept');
   check(await p.inputValue('#recipe-titel-input') === 'Diktiertes Rezept' && !(await sichtbar(p, '#rezept-import-block')), 'Formular ausgefüllt, ohne Import-Feld');
   check(await p.evaluate(() => ladeFreiNotizen().length) === 2, 'Notizen bleiben, bis das Rezept gespeichert ist');
-  await p.click('#recipe-submit-btn'); await p.waitForTimeout(600);
+  await p.click('#recipe-submit-btn'); await p.waitForTimeout(700);
   check(p.calls.some(c => c.startsWith('POST /rest/v1/recipes')) && await p.evaluate(() => ladeFreiNotizen().length) === 0, 'Nach dem Speichern: Rezept angelegt, Notizen geleert');
+  check((p.tagebuchPatches || []).some(x => x.id === p.tagebuchPosts[0].id && x.recipe_id === 'neu1' && x.titel === 'Diktiertes Rezept'), 'Tagebuch-Eintrag wird mit dem neuen Rezept verbunden');
   check(!p.calls.some(c => c.includes('detect-techniques')), 'Keine Technik-Erkennung mehr nach dem Speichern');
   check((await p.textContent('#detect-card')).includes('gespeichert'), 'Hinweis "gespeichert" über der Liste');
   check(p.fehler.length === 0, 'Keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 7a. Frei kochen, aber kein Rezept daraus ----
+  p = await neueSeite(browser, 320, { skillet_freestyle_schnipsel: JSON.stringify([{ text: 'Reste-Pfanne mit Ei', zeit: tageZurueck(0) }]) });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('#kachel-kochen'); await p.waitForTimeout(300);
+  await p.click('#koch-frei-knopf'); await p.waitForTimeout(400);
+  await p.click('#koch-fertig'); await p.waitForTimeout(200);
+  await p.click('.fertig-pille >> text=Nein'); await p.waitForTimeout(100);
+  check((await p.textContent('.fertig')).includes('Die Notizen werden dann gelöscht'), '"Nein" erklärt, dass die Notizen gelöscht werden');
+  await p.click('.fertig-pille >> text=Geht so'); await p.waitForTimeout(100);
+  check(await sichtbar(p, '#fertig-notiz'), '"Geht so" öffnet die Notiz fürs nächste Mal');
+  await p.click('#fertig-speichern'); await p.waitForTimeout(500);
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#start-view') && await p.evaluate(() => ladeFreiNotizen().length) === 0, 'Fertig ohne Rezept: zurück zum Start, Notizen gelöscht');
+  check(!p.extraktTexte, 'Kein Gemini-Aufruf, wenn kein Rezept gewünscht');
+  check((await p.textContent('#start-zuletzt')).includes('Frei gekocht') && (await p.textContent('#start-zuletzt')).includes('heute'), 'Start: "Zuletzt gekocht" zeigt es mit "heute"');
+  check(p.fehler.length === 0, 'Frei ohne Rezept: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
   // ---- 7b. Ganzes Rezept diktieren im Formular ----
@@ -273,28 +321,95 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(p.fehler.length === 0, 'Share: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
-  // ---- 10. Kochen aus dem Rezept ----
+  // ---- 10. Kochen aus dem Rezept: Zettel, "Was war anders?", Fertig-Bildschirm ----
   p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  p.tagebuch = beispielTagebuch();
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
   await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  check((await p.textContent('#recipe-detail-r1 .karte-zettel')).includes('Etwas zu flüssig'), 'Rezept-Karte: Zettel vom letzten Mal');
+  check((await p.textContent('#recipe-detail-r1 .karte-meta')).includes('3× gekocht · zuletzt vor 5 Wochen'), 'Rezept-Karte: 3× gekocht · zuletzt vor 5 Wochen');
   await p.click('#recipe-detail-r1 >> text=Kochen'); await p.waitForTimeout(500);
-  check(await sichtbar(p, '#kochmodus-overlay'), '"Kochen" startet den Kochmodus');
+  check(await sichtbar(p, '#kochmodus-overlay'), '"Kochen" startet den Kochbildschirm');
   check(!(await sichtbar(p, '#rezept-ueberlagerung')), 'Rezept-Karte ist beim Kochen zu');
-  check((await p.textContent('#kochmodus-overlay')).includes('Gulasch nach Omas Art') && (await p.textContent('#kochmodus-overlay')).includes('Schritt 1 von 3'), 'Kochmodus zeigt das gewählte Rezept, Schritt 1 von 3');
-  check(await p.locator('#kochmodus-overlay #kochmodus-notiz, #kochmodus-overlay #frei-eingabe').count() === 0, 'Nach Rezept: kein Notizfeld (kommt mit Etappe 2 zurück)');
+  check((await p.textContent('#kochmodus-overlay')).includes('Gulasch nach Omas Art') && (await p.textContent('#kochmodus-overlay')).includes('Schritt 1 von 3'), 'Kochbildschirm zeigt das gewählte Rezept, Schritt 1 von 3');
+  check((await p.textContent('.koch-zettel')).includes('Etwas zu flüssig') && (await p.textContent('.koch-zettel')).includes('vor 5 Wochen'), 'Kochbildschirm: Zettel "Letztes Mal notiert" oben');
   await p.click('#kochmodus-overlay button[aria-label="Nächster Schritt"]'); await p.waitForTimeout(100);
   check((await p.textContent('#kochmodus-overlay')).includes('Schritt 2 von 3'), 'Pfeil → nächster Schritt');
+  await p.click('.koch-anders-box summary'); await p.fill('#koch-anders', 'Heute 4 Zwiebeln');
+  await p.click('#kochmodus-overlay button[aria-label="Nächster Schritt"]'); await p.waitForTimeout(100);
+  check((await p.inputValue('#koch-anders')) === 'Heute 4 Zwiebeln' && (await p.textContent('#kochmodus-overlay')).includes('Schritt 3 von 3'), '"Was war anders?" bleibt beim Schrittwechsel stehen');
   check(await kein_seitlich(p, 320), 'Kochen nach Rezept: nichts ragt seitlich heraus');
   await p.screenshot({ path: OUT + '/n6_kochmodus.png' });
-  await p.click('#kochmodus-overlay .koch-haupt'); await p.waitForTimeout(400);
-  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#view-recipes') && await sichtbar(p, '#motivator-karte'), 'Fertig: zurück zu den Rezepten mit "Gegessen?"-Karte');
+  await p.reload(); await p.waitForTimeout(800);
+  check((await p.inputValue('#koch-anders')) === 'Heute 4 Zwiebeln' && (await p.textContent('#kochmodus-overlay')).includes('Schritt 3 von 3'), 'Nach Neuladen: Schritt und Notiz sind wieder da');
+  await p.click('#kochmodus-overlay .koch-haupt'); await p.waitForTimeout(300);
+  check(await sichtbar(p, '#fertig-notiz') && (await p.inputValue('#fertig-notiz')) === 'Heute 4 Zwiebeln', 'Fertig-Bildschirm: Notiz vom Kochen ist schon drin');
+  check(await sichtbar(p, '#fertig-motivator') && (await p.textContent('#fertig-motivator')).includes('Nährwerte rechnen'), 'Nach Rezept: "Gegessen" mit Nährwerte-rechnen-und-eintragen');
+  check(!(await p.textContent('.fertig')).includes('Als Rezept speichern'), 'Nach Rezept: keine Frage nach "Als Rezept speichern"');
+  await p.click('.fertig-pille >> text=Geht so'); await p.waitForTimeout(100);
+  await p.click('.fertig-zurueck'); await p.waitForTimeout(200);
+  check(await sichtbar(p, '#koch-anders') && (await p.textContent('#kochmodus-overlay')).includes('Schritt 3 von 3'), '"Zurück zum Kochen" geht zurück an dieselbe Stelle');
+  await p.click('#kochmodus-overlay .koch-haupt'); await p.waitForTimeout(200);
+  await p.click('.fertig-pille >> text=Geht so'); await p.waitForTimeout(100);
+  await p.click('#fertig-motivator button'); await p.waitForTimeout(400);
+  check(await p.locator('#fertig-motivator a.motivator-knopf').count() === 1, 'Nährwerte gerechnet: Link zu Motivator erscheint');
+  await p.screenshot({ path: OUT + '/n6d_fertig_rezept.png' });
+  // Tagebuch kaputt: Hinweis, nichts geht verloren
+  p.tagebuchFehler = true;
+  await p.click('#fertig-speichern'); await p.waitForTimeout(400);
+  check(await sichtbar(p, '#kochmodus-overlay') && (await p.textContent('#fertig-status')).includes('nochmal versuchen'), 'Tagebuch-Fehler: Fertig-Bildschirm bleibt mit Hinweis');
+  p.tagebuchFehler = false;
+  await p.click('#fertig-speichern'); await p.waitForTimeout(600);
+  const post = (p.tagebuchPosts || [])[0] || {};
+  check(post.recipe_id === 'r1' && post.bewertung === 'geht_so' && post.notiz === 'Heute 4 Zwiebeln' && post.frei === false, 'Tagebuch: Rezept, "Geht so" und Notiz gespeichert ' + JSON.stringify(post));
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && await sichtbar(p, '#start-view'), 'Danach: zurück zum Start');
+  check((await p.textContent('.zuletzt-zeile >> nth=0')).includes('Gulasch nach Omas Art') && (await p.textContent('.zuletzt-zeile >> nth=0')).includes('heute'), 'Start: "Zuletzt gekocht" hat das Gulasch von heute oben');
   check(!p.calls.some(c => /reflections|techniques/.test(c)), 'Keine Reflexion mehr nach dem Kochen');
-  await p.evaluate(() => document.getElementById('motivator-karte').remove());
-  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
-  await p.click('#recipe-detail-r1 >> text=Kochen'); await p.waitForTimeout(400);
+  // × ohne Tagebuch
+  await p.click('#kachel-kochen'); await p.waitForTimeout(300);
+  await p.click('#koch-rezepte .koch-rezept >> nth=0'); await p.waitForTimeout(500);
   await p.click('#kochmodus-overlay .koch-kopf button'); await p.waitForTimeout(300);
-  check(!(await sichtbar(p, '#kochmodus-overlay')) && await p.locator('#motivator-karte').count() === 0, '× schließt ohne "Gegessen?"-Karte');
+  check(!(await sichtbar(p, '#kochmodus-overlay')) && (p.tagebuchPosts || []).length === 1, '× schließt ohne Tagebuch-Eintrag');
   check(p.fehler.length === 0, 'Kochen: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 10b. Start mit Vorschlägen und Kochbuch mit Filtern ----
+  p = await neueSeite(browser, 320);
+  p.tagebuch = beispielTagebuch();
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(700);
+  const grund = await p.textContent('.vorschlag-grund');
+  const titel = await p.textContent('.vorschlag-titel');
+  check(['Gulasch nach Omas Art', 'Pfifferling-Sauce mit sehr langem Titel zum Testen der Umbrüche'].includes(titel), 'Vorschlag: 👍-Rezept oder nie gekochtes (' + titel + ')');
+  check(titel !== 'Jans Gulasch' && !(await p.textContent('#start-vorschlag')).includes('Jans Gulasch'), 'Vor 2 Tagen Gekochtes wird nicht vorgeschlagen');
+  const alleGruende = await p.evaluate(() => kochVorschlaege(allRecipesCache).map(v => v.rezept.id + ':' + v.grund));
+  check(alleGruende.some(g => g === 'r1:👍 mochtest du · vor 5 Wochen') && alleGruende.some(g => g === 'r3:✨ Noch nie gekocht') && alleGruende.length === 2, 'Gründe: "👍 mochtest du · vor 5 Wochen" und "✨ Noch nie gekocht" ' + JSON.stringify(alleGruende));
+  check(await p.locator('.weitere button').count() === 1, 'Darunter "Oder vielleicht" mit der anderen Idee');
+  await p.click('button[aria-label="Andere Idee"]'); await p.waitForTimeout(100);
+  check((await p.textContent('.vorschlag-titel')) !== titel, '↻ zeigt eine andere Idee');
+  check(await p.locator('.zuletzt-zeile').count() === 3 && (await p.textContent('.zuletzt-zeile >> nth=0')).includes('Frei gekocht') && (await p.textContent('.zuletzt-zeile >> nth=0')).includes('gestern'), 'Zuletzt gekocht: drei Einträge, neuester oben (gestern)');
+  check(await kein_seitlich(p, 320), 'Start mit Vorschlag: nichts ragt seitlich heraus');
+  await p.screenshot({ path: OUT + '/n1_start.png', fullPage: true });
+  await p.click('.vorschlag-knoepfe >> text=Einkauf'); await p.waitForTimeout(300);
+  check(await sichtbar(p, '#rezept-ueberlagerung') && await p.locator('.einkauf-box:visible').count() === 1, '🛒 Einkauf öffnet das Rezept mit der Einkaufsliste');
+  await p.goBack(); await p.waitForTimeout(300);
+  await p.click('#kachel-recipes'); await p.waitForTimeout(500);
+  check((await p.textContent('.rezept-karte >> nth=0')).includes('👍') && (await p.textContent('.rezept-karte >> nth=0 >> .rezept-meta')).startsWith('3× gekocht · zuletzt vor 5 Wochen'), 'Kochbuch: 👍 und "3× gekocht · zuletzt vor 5 Wochen"');
+  check((await p.textContent('.rezept-karte >> nth=1 >> .rezept-meta')).startsWith('1× gekocht · vor 2 Tagen'), 'Einmal gekocht: "1× gekocht · vor 2 Tagen"');
+  for (const [chip, anzahl, name] of [['👍 Lieblinge', 1, 'Lieblinge'], ['Lange her', 1, 'Lange her'], ['Nie gekocht', 1, 'Nie gekocht'], ['Alle', 3, 'Alle']]) {
+    await p.click(`.filter-chip >> text=${chip}`); await p.waitForTimeout(100);
+    check(await p.locator('.rezept-karte').count() === anzahl, `Filter ${name}: ${anzahl}`);
+  }
+  check(await kein_seitlich(p, 320), 'Kochbuch mit Filtern: nichts ragt seitlich heraus');
+  await p.screenshot({ path: OUT + '/n2_liste.png', fullPage: true });
+  check(p.fehler.length === 0, 'Vorschläge: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 10c. Leeres Tagebuch ----
+  p = await neueSeite(browser, 320);
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(600);
+  check(await p.locator('.zuletzt-zeile').count() === 0, 'Ohne Tagebuch: kein "Zuletzt gekocht"');
+  check(await p.locator('.vorschlag-titel').count() === 1, 'Ohne Tagebuch: trotzdem ein Vorschlag (nie gekochte Rezepte)');
+  check(p.fehler.length === 0, 'Leeres Tagebuch: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
   // ---- 12. Einkaufsliste an Nest ----

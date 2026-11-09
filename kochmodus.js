@@ -10,6 +10,7 @@ let timerInterval = null;
 let timerEndAt = null; // Zeitstempel (ms), zu dem der Timer abläuft
 let alarmActive = false;
 let alarmSoundInterval = null;
+let kochFertig = null; // Fertig-Bildschirm offen: { bewertung, notiz, alsRezept, notizOffen }
 
 // ---- Notizen beim freien Kochen: bleiben auf dem Gerät, bis daraus ein Rezept gespeichert ist ----
 // (Schlüssel vom früheren Freestyle-Modus - schon diktierte Schritte gehen so nicht verloren)
@@ -56,9 +57,19 @@ function saveKochmodusSession() {
     ohneRezept: kochmodusOhneRezept,
     schrittIndex: kochmodusSchrittIndex,
     entwurf: document.getElementById('frei-eingabe')?.value || '',
+    anders: aktuelleAndersNotiz(),
+    fertig: kochFertig,
     timerEndAt
   };
   try { localStorage.setItem('skillet_kochmodus_session', JSON.stringify(session)); } catch (e) { /* egal, dann eben nicht */ }
+}
+
+// "Was war anders?" beim Kochen nach Rezept - überlebt Neuzeichnen und Neuladen
+let kochAnders = '';
+function aktuelleAndersNotiz() {
+  const feld = document.getElementById('koch-anders');
+  if (feld) kochAnders = feld.value;
+  return kochAnders;
 }
 
 function clearKochmodusSession() {
@@ -93,6 +104,9 @@ async function restoreKochmodusSessionIfAny() {
 
   timerEndAt = (session.timerEndAt && session.timerEndAt > Date.now()) ? session.timerEndAt : null;
   if (timerEndAt) timerInterval = setInterval(tickTimer, 250);
+  kochAnders = session.anders || '';
+  kochFertig = session.fertig || null;
+  await Promise.all([ladeTagebuch(), allRecipesCache.length ? null : loadRecipes()]);
 
   zeigeKochOverlay();
   const feld = document.getElementById('frei-eingabe');
@@ -153,9 +167,11 @@ function startFreiKochen() {
 async function startKochmodus(direktRezeptId) {
   kochmodusSchrittIndex = 0;
   kochmodusRezept = null;
+  kochAnders = '';
+  kochFertig = null;
   if (direktRezeptId) {
     kochmodusOhneRezept = false;
-    kochmodusRezept = await ladeKochRezept(direktRezeptId);
+    [kochmodusRezept] = await Promise.all([ladeKochRezept(direktRezeptId), ladeTagebuch()]);
   } else {
     kochmodusOhneRezept = true;
   }
@@ -186,6 +202,8 @@ function zeitKurz(iso) {
 
 // ---- Overlay rendern ----
 function renderKochmodusOverlay() {
+  if (kochFertig) { renderFertig(); return; }
+  aktuelleAndersNotiz();
   const overlay = document.getElementById('kochmodus-overlay');
   const entwurf = document.getElementById('frei-eingabe')?.value; // Eingabe überlebt das Neuzeichnen (z. B. Timer-Alarm)
   const frei = kochmodusOhneRezept || !kochmodusRezept;
@@ -219,7 +237,7 @@ function renderKochmodusOverlay() {
       <textarea id="frei-eingabe" class="frei-eingabe" placeholder="Was machst du gerade?" oninput="saveKochmodusSession()"></textarea>
       <div class="koch-knoepfe">
         <button type="button" class="koch-zweit" onclick="freiNotizHinzufuegen()">+ Notiz</button>
-        <button type="button" class="koch-haupt" id="koch-fertig" onclick="beendeKochmodus(true)">Fertig</button>
+        <button type="button" class="koch-haupt" id="koch-fertig" onclick="zeigeFertig()">Fertig</button>
       </div>
       <div class="koch-status" id="koch-status"></div>`;
   } else {
@@ -238,7 +256,12 @@ function renderKochmodusOverlay() {
     } else {
       mitte = `<div class="koch-mitte"><div class="koch-text">${htmlSicher(kochmodusRezept.anleitung) || 'Kein Rezepttext hinterlegt.'}</div></div>`;
     }
-    unten = `<div class="koch-knoepfe"><button type="button" class="koch-haupt" onclick="beendeKochmodus(true)">Fertig</button></div>`;
+    unten = `
+      <details class="koch-anders-box"${kochAnders ? ' open' : ''}>
+        <summary>🎤 Was war anders?</summary>
+        <textarea id="koch-anders" placeholder="z. B. heute 3 Zwiebeln, Suppe etwas zu flüssig" oninput="saveKochmodusSession()">${htmlSicher(kochAnders)}</textarea>
+      </details>
+      <div class="koch-knoepfe"><button type="button" class="koch-haupt" onclick="zeigeFertig()">Fertig</button></div>`;
   }
 
   const zutatenHtml = (!frei && kochmodusRezept.zutaten_strukturiert && kochmodusRezept.zutaten_strukturiert.length > 0)
@@ -254,6 +277,7 @@ function renderKochmodusOverlay() {
       <button type="button" onclick="beendeKochmodus(false)" aria-label="Kochen beenden">×</button>
     </div>
     ${timerHtml}
+    ${frei ? '' : zettelHtml(kochmodusRezept.id, 'koch-zettel')}
     ${zutatenHtml}
     ${mitte}
     ${unten}`;
@@ -371,16 +395,157 @@ function handleVisibilityForWakeLock() {
   }
 }
 
-// ---- Kochen beenden ----
-// mitAbschluss=false (×): einfach schließen - Notizen vom freien Kochen bleiben für später
-// mitAbschluss=true (Fertig): nach Rezept → Rezepte mit "Gegessen?"; frei → aus den Notizen ein Rezept machen
-async function beendeKochmodus(mitAbschluss) {
-  if (mitAbschluss && (kochmodusOhneRezept || !kochmodusRezept)) {
-    const ok = await freiZuRezept();
-    if (!ok) return; // Fehler: Kochbildschirm bleibt offen, nichts geht verloren
+// ---- Fertig-Bildschirm: drei kurze, freiwillige Fragen ----
+function zeigeFertig() {
+  const frei = kochmodusOhneRezept || !kochmodusRezept;
+  // Was noch im Eingabefeld steht, gehört zu den Notizen
+  if (frei && (document.getElementById('frei-eingabe')?.value || '').trim()) freiNotizHinzufuegen();
+  const anders = aktuelleAndersNotiz().trim();
+  kochFertig = {
+    bewertung: null,
+    notiz: anders,
+    notizOffen: !!anders,
+    alsRezept: frei && ladeFreiNotizen().length > 0
+  };
+  saveKochmodusSession();
+  renderFertig();
+}
+
+function fertigZurueck() {
+  if (kochFertig) kochAnders = kochFertig.notiz || kochAnders;
+  kochFertig = null;
+  saveKochmodusSession();
+  renderKochmodusOverlay();
+}
+
+function fertigNotizMerken() {
+  const feld = document.getElementById('fertig-notiz');
+  if (feld && kochFertig) kochFertig.notiz = feld.value;
+}
+
+function fertigBewerten(wert) {
+  fertigNotizMerken();
+  kochFertig.bewertung = kochFertig.bewertung === wert ? null : wert;
+  // Bei "Geht so" und 👎 liegt die Frage nahe, was besser werden kann
+  if (wert !== 'gern' && kochFertig.bewertung) kochFertig.notizOffen = true;
+  saveKochmodusSession();
+  renderFertig();
+  if (kochFertig.notizOffen && !kochFertig.notiz) document.getElementById('fertig-notiz')?.focus();
+}
+
+function fertigNotizOeffnen() {
+  kochFertig.notizOffen = true;
+  renderFertig();
+  document.getElementById('fertig-notiz')?.focus();
+}
+
+function fertigAlsRezept(ja) {
+  fertigNotizMerken();
+  kochFertig.alsRezept = ja;
+  saveKochmodusSession();
+  renderFertig();
+}
+
+function renderFertig() {
+  const overlay = document.getElementById('kochmodus-overlay');
+  const frei = kochmodusOhneRezept || !kochmodusRezept;
+  const f = kochFertig;
+  const notizen = frei ? ladeFreiNotizen().length : 0;
+  const pille = (wert, text) =>
+    `<button type="button" class="fertig-pille${f.bewertung === wert ? ' an' : ''}" onclick="fertigBewerten('${wert}')" aria-pressed="${f.bewertung === wert}">${text}</button>`;
+
+  overlay.innerHTML = `
+    <div class="koch-kopf">
+      <button type="button" class="fertig-zurueck" onclick="fertigZurueck()">‹ Zurück zum Kochen</button>
+    </div>
+    <div class="fertig">
+      <div class="fertig-ico">🍲</div>
+      <h3>Fertig!</h3>
+      <div class="fertig-gericht">${frei ? 'Frei gekocht' : htmlSicher(kochmodusRezept.titel)}</div>
+
+      <div class="fertig-block">
+        <div class="fertig-frage">Wieder kochen?</div>
+        <div class="fertig-pillen">${pille('gern', '👍 Gern')}${pille('geht_so', 'Geht so')}${pille('nein', '👎')}</div>
+      </div>
+
+      <div class="fertig-block">
+        ${f.notizOffen
+          ? `<div class="fertig-frage">${frei ? 'Nächstes Mal anders?' : 'Was war anders, was soll nächstes Mal anders?'}</div>
+             <textarea id="fertig-notiz" placeholder="z. B. etwas zu flüssig – weniger Brühe" oninput="fertigNotizMerken(); saveKochmodusSession()">${htmlSicher(f.notiz || '')}</textarea>
+             <div class="fertig-info">Steht beim nächsten Mal oben, wenn du das Rezept kochst.</div>`
+          : `<button type="button" class="fertig-link" onclick="fertigNotizOeffnen()">+ Notiz fürs nächste Mal</button>`}
+      </div>
+
+      ${frei && notizen ? `
+      <div class="fertig-block">
+        <div class="fertig-frage">Als Rezept speichern? <span>· aus ${notizen} ${notizen === 1 ? 'Notiz' : 'Notizen'}</span></div>
+        <div class="fertig-pillen">
+          <button type="button" class="fertig-pille${f.alsRezept ? ' an' : ''}" onclick="fertigAlsRezept(true)">Ja, speichern</button>
+          <button type="button" class="fertig-pille${f.alsRezept ? '' : ' an'}" onclick="fertigAlsRezept(false)">Nein</button>
+        </div>
+        <div class="fertig-info">${f.alsRezept ? 'Skillet macht daraus Zutaten und Schritte – du prüfst kurz.' : 'Die Notizen werden dann gelöscht.'}</div>
+      </div>` : ''}
+
+      ${!frei && typeof motivatorBlockHtml === 'function' ? `
+      <div class="fertig-block">
+        <div class="fertig-frage">Gegessen?</div>
+        ${motivatorBlockHtml(kochmodusRezept.id)}
+      </div>` : ''}
+
+      <button type="button" class="koch-haupt fertig-knopf" id="fertig-speichern" onclick="fertigAbschliessen()">Fertig</button>
+      <div class="koch-status" id="fertig-status"></div>
+    </div>`;
+}
+
+// Tagebuch-Eintrag schreiben, dann je nach Wahl: Rezept aus den Notizen machen oder schließen
+async function fertigAbschliessen() {
+  fertigNotizMerken();
+  const frei = kochmodusOhneRezept || !kochmodusRezept;
+  const knopf = document.getElementById('fertig-speichern');
+  const status = document.getElementById('fertig-status');
+  knopf.disabled = true;
+
+  if (!kochFertig.eintragId) {
+    try {
+      const zeile = await tagebuchEintragen({
+        recipe_id: frei ? null : kochmodusRezept.id,
+        titel: frei ? 'Frei gekocht' : kochmodusRezept.titel,
+        frei,
+        bewertung: kochFertig.bewertung,
+        notiz: (kochFertig.notiz || '').trim() || null
+      });
+      kochFertig.eintragId = zeile.id; // bei einem zweiten Versuch nicht doppelt eintragen
+      saveKochmodusSession();
+    } catch (e) {
+      status.textContent = 'Das Tagebuch hat gerade nicht geklappt – nochmal versuchen?';
+      knopf.disabled = false;
+      return;
+    }
   }
 
-  const rezeptId = kochmodusRezept ? kochmodusRezept.id : null;
+  if (frei && kochFertig.alsRezept && ladeFreiNotizen().length) {
+    status.textContent = 'Rezept wird zusammengesetzt …';
+    const ok = await freiZuRezept(kochFertig.eintragId);
+    if (!ok) {
+      status.textContent = 'Das Zusammensetzen hat nicht geklappt – deine Notizen sind noch da. Nochmal versuchen?';
+      knopf.disabled = false;
+      return;
+    }
+    kochenSchliessen();
+    return;
+  }
+
+  if (frei) leereFreiNotizen(); // "Nein" zum Rezept: die Notizen haben ihren Zweck erfüllt
+  kochenSchliessen();
+  zeigeStart();
+}
+
+// × im Kochbildschirm: einfach schließen, ohne Tagebuch - Notizen vom freien Kochen bleiben für später
+function beendeKochmodus() {
+  kochenSchliessen();
+}
+
+function kochenSchliessen() {
   clearInterval(timerInterval);
   timerInterval = null;
   timerEndAt = null;
@@ -388,26 +553,14 @@ async function beendeKochmodus(mitAbschluss) {
   releaseWakeLock();
   document.removeEventListener('visibilitychange', handleVisibilityForWakeLock);
   document.getElementById('kochmodus-overlay').style.display = 'none';
+  kochFertig = null;
+  kochAnders = '';
   clearKochmodusSession();
-
-  if (mitAbschluss && rezeptId && !kochmodusOhneRezept) {
-    openSection('recipes');
-    if (typeof zeigeMotivatorKarte === 'function') zeigeMotivatorKarte(rezeptId);
-  }
 }
 
-// Notizen → Gemini → ausgefülltes Formular zum Prüfen. Gibt true zurück, wenn es weitergehen kann.
-async function freiZuRezept() {
-  // Was noch im Eingabefeld steht, gehört dazu
-  if ((document.getElementById('frei-eingabe')?.value || '').trim()) freiNotizHinzufuegen();
+// Notizen → Gemini → ausgefülltes Formular zum Prüfen. true, wenn es geklappt hat.
+async function freiZuRezept(tagebuchId) {
   const notizen = ladeFreiNotizen();
-  if (notizen.length === 0) return true; // nichts notiert - einfach beenden
-
-  const status = document.getElementById('koch-status');
-  const knopf = document.getElementById('koch-fertig');
-  if (knopf) knopf.disabled = true;
-  if (status) status.textContent = 'Rezept wird zusammengesetzt …';
-
   const text = 'Notizen in der Reihenfolge, in der gekocht wurde:\n' + notizen.map((n, i) => `${i + 1}. ${n.text}`).join('\n');
   try {
     const data = await rezeptTextAuswerten(text);
@@ -418,6 +571,7 @@ async function freiZuRezept() {
     document.getElementById('edit-mode-banner').style.display = 'none';
     formularAusAuswertung(data);
     window.pendingFreiNotizenLoeschen = true; // erst nach dem Speichern löschen
+    window.pendingTagebuchEintrag = tagebuchId || null; // nach dem Speichern mit dem Rezept verbinden
     setTimeout(() => {
       zeigeRezeptFormular();
       document.getElementById('rezept-import-block').style.display = 'none';
@@ -425,8 +579,6 @@ async function freiZuRezept() {
     }, 0);
     return true;
   } catch (e) {
-    if (status) status.textContent = 'Das hat nicht geklappt: ' + e.message + ' – deine Notizen sind noch da.';
-    if (knopf) knopf.disabled = false;
     return false;
   }
 }
