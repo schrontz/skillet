@@ -505,6 +505,26 @@ async function fertigAbschliessen() {
   const status = document.getElementById('fertig-status');
   knopf.disabled = true;
 
+  if (!kochFertig.eintragId && !frei) {
+    // Heute schon gekocht und eingetragen (z. B. zweimal auf „Fertig“)? Dann zusammenlegen statt doppelt zählen
+    await ladeTagebuch();
+    const heute = tagebuchHeute(kochmodusRezept.id);
+    if (heute) {
+      try {
+        await tagebuchAktualisieren(heute.id, {
+          bewertung: kochFertig.bewertung || heute.bewertung || null,
+          notiz: notizenZusammen(heute.notiz, kochFertig.notiz)
+        });
+        kochFertig.eintragId = heute.id;
+        saveKochmodusSession();
+      } catch (e) {
+        status.textContent = 'Das Tagebuch hat gerade nicht geklappt – nochmal versuchen?';
+        knopf.disabled = false;
+        return;
+      }
+    }
+  }
+
   if (!kochFertig.eintragId) {
     try {
       const zeile = await tagebuchEintragen({

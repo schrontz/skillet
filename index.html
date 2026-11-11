@@ -238,6 +238,40 @@
   }
   .ikon-knopf.an { background: var(--accent-light); border-color: var(--accent-light); }
   .karten-panel { margin-top: 0.7rem; padding: 0.7rem; background: var(--bg); border-radius: 8px; }
+  /* Menge + Einheit in der Rezeptansicht ändern */
+  .zutat-zeile > span:first-child { min-width: 0; overflow-wrap: break-word; }
+  .zutat-zeile:has(.menge-edit) { flex-wrap: wrap; row-gap: 0.3rem; }
+  .zutat-zeile .menge-edit { flex: none; margin-left: auto; display: flex; align-items: center; gap: 0.25rem; }
+  .zutat-zeile .menge-edit .me-menge { width: 3.3rem; }
+  .zutat-zeile .menge-edit .me-einheit { width: 3.6rem; text-align: left; }
+  .me-ok { flex: none; width: 1.8rem; height: 1.8rem; padding: 0; border: none; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; }
+  .einheit-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; justify-content: flex-end; padding: 0.15rem 0 0.45rem; border-bottom: 1px solid var(--linie); }
+  .einheit-chips button { padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid #e8d3d1; background: var(--card); color: var(--accent-dark); font-size: 0.8rem; cursor: pointer; }
+  .zutat-hinweis { font-size: 0.78rem; color: var(--accent-dark); min-height: 0; margin-top: 0.3rem; }
+  .zutat-hinweis:empty { display: none; }
+  /* Kochverlauf */
+  .meta-knopf { padding: 0; border: none; background: none; font: inherit; color: var(--accent); border-bottom: 1px dashed #d9b2b2; cursor: pointer; }
+  .verlauf-titel { font-weight: 700; font-size: 0.88rem; margin-bottom: 0.3rem; }
+  .verlauf-eintrag { padding: 0.45rem 0; border-bottom: 1px solid var(--linie); }
+  .verlauf-eintrag:last-child { border-bottom: none; }
+  .verlauf-kopf { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; }
+  .verlauf-datum { flex: 1; min-width: 0; }
+  .verlauf-datum small { color: var(--muted); margin-left: 0.2rem; }
+  .verlauf-aendern { flex: none; width: 2rem; height: 2rem; padding: 0; border: none; border-radius: 8px; background: none; color: var(--accent-dark); cursor: pointer; }
+  .verlauf-notiz { font-size: 0.82rem; color: var(--muted); margin-top: 0.15rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .verlauf-eintrag.bearbeiten { display: flex; flex-direction: column; gap: 0.5rem; }
+  .vb-zeile { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+  .vb-zeile input { flex: 1; min-width: 0; padding: 0.35rem 0.5rem; font-size: 0.9rem; }
+  .vb-pillen { display: flex; gap: 0.35rem; }
+  .vb-pille { flex: 1 1 0; min-width: 0; border: 1.5px solid #e8d3d1; border-radius: 999px; padding: 0.4rem 0.2rem; background: var(--card); color: var(--ink); font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+  .vb-pille.an { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .vb-notiz { width: 100%; min-height: 3.4rem; padding: 0.45rem 0.55rem; border-radius: 8px; font: inherit; font-size: 0.88rem; }
+  .vb-knoepfe { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+  .vb-loeschen { margin-left: auto; }
+  .vb-speichern { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .vb-loeschen.sicher { color: var(--accent); font-weight: 700; }
+  .vb-status { font-size: 0.78rem; color: var(--accent-dark); }
+  .vb-status:empty { display: none; }
   .karten-panel .aktionen { margin-top: 0.4rem; }
   .oder-trenner { display: flex; align-items: center; gap: 0.6rem; margin: 1rem 0 0.2rem; color: var(--muted); font-size: 0.8rem; }
   .oder-trenner::before, .oder-trenner::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
@@ -365,6 +399,8 @@
   .nw-legende span { width: 2.2rem; text-align: right; color: var(--muted); font-size: 0.74rem; }
   .nw-unter { font-size: 0.8rem; color: var(--muted); margin: 0.6rem 0 0; line-height: 1.4; }
   .nw-schaetzung { display: inline-block; margin-left: 0.2rem; padding: 0.1rem 0.5rem; border-radius: 999px; background: #fff4e0; color: #8a6420; font-weight: 600; font-size: 0.74rem; }
+  .nw-ki { background: var(--panel); color: var(--accent-dark); }
+  .nw-ki-text { font-style: italic; }
   .nw-fehlt { margin-top: 0.5rem; padding: 0.45rem 0.6rem; border-radius: 8px; background: #fbe6e6; color: var(--accent-dark); font-size: 0.8rem; }
   .nw-details { margin-top: 0.7rem; border-top: 1px solid var(--linie); padding-top: 0.5rem; }
   .nw-details summary { cursor: pointer; font-size: 0.88rem; font-weight: 600; color: var(--accent-dark); padding: 0.2rem 0; }
@@ -498,6 +534,11 @@
 
       <label>Zutaten</label>
       <div id="zutaten-rows"></div>
+      <datalist id="einheiten-liste">
+        <option value="g"><option value="kg"><option value="ml"><option value="l"><option value="EL"><option value="TL">
+        <option value="Stück"><option value="Dose"><option value="Bund"><option value="Prise"><option value="Zehe">
+        <option value="Scheibe"><option value="Packung"><option value="Glas"><option value="Becher">
+      </datalist>
       <button type="button" class="btn-klein" onclick="addZutatRow()">+ Zutat</button>
 
       <label for="recipe-portionen-input">Portionen (für die Mengenumrechnung)</label>

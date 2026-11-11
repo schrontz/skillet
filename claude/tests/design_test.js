@@ -1,4 +1,4 @@
-const { chromium } = require('/home/claude/.npm-global/lib/node_modules/playwright');
+const { chromium } = require(require('fs').existsSync('/home/claude/.npm-global/lib/node_modules/playwright') ? '/home/claude/.npm-global/lib/node_modules/playwright' : 'playwright');
 const DIR = process.argv[2] || '/tmp/sk';
 const OUT = process.argv[3] || '/tmp/test';
 let ok = 0, fail = 0;
@@ -32,13 +32,17 @@ async function neueSeite(browser, width, storage) {
       const anfrage = JSON.parse(req.postData() || '{}');
       page.nwAnfragen = (page.nwAnfragen || []).concat([anfrage]);
       body = page.nwFehler ? { error: 'Error: Gemini: 503 UNAVAILABLE The model is overloaded. Please try again later.' } : {
-        version: 1, stand: anfrage.stand, quelle: 'BLS 4.0', berechnet_am: '2026-10-11T12:00:00Z',
+        version: 3, stand: anfrage.stand, quelle: 'BLS 4.0', berechnet_am: '2026-10-11T12:00:00Z',
         summe: { kcal: 1302, eiweiss: 203.6, kh: 18.3, fett: 45.6 },
         zutaten: [
           { name: 'Rindergulasch', menge: 1000, einheit: 'g', status: 'ok', gramm: 1000, bls_code: 'U1', bls_name: 'Rind Gulasch (Bug) roh', annahme: null, unsicher: false, quelle: 'ki', je100: { kcal: 120, eiweiss: 20, kh: 0, fett: 4.5 }, kcal: 1200, eiweiss: 200, kh: 0, fett: 45 },
           { name: 'Zwiebeln', menge: 3, einheit: null, status: 'ok', gramm: 300, bls_code: 'G480100', bls_name: 'Speisezwiebel roh', annahme: '1 Zwiebel ≈ 100 g', unsicher: false, quelle: 'ki', je100: { kcal: 34, eiweiss: 1.2, kh: 6.1, fett: 0.2 }, kcal: 102, eiweiss: 3.6, kh: 18.3, fett: 0.6 },
           { name: 'Paprikapulver "edelsüß"', menge: 2, einheit: 'EL', status: 'vernachlaessigbar', unsicher: false },
-          { name: 'Salz', menge: null, einheit: null, status: 'vernachlaessigbar', unsicher: false }
+          { name: 'Salz', menge: null, einheit: null, status: 'vernachlaessigbar', unsicher: false },
+          ...(page.nwMitKi ? [
+            { name: 'Pancetta', menge: 100, einheit: 'g', status: 'ok', gramm: 100, werte_quelle: 'bls', bls_code: 'W411300', bls_name: 'Schwein Bauchspeck, geräuchert', aehnlich: true, annahme: null, unsicher: false, quelle: 'ki', je100: { kcal: 300, eiweiss: 15, kh: 0, fett: 27 }, kcal: 300, eiweiss: 15, kh: 0, fett: 27 },
+            { name: 'Chilis', menge: 2, einheit: null, status: 'ok', gramm: 20, werte_quelle: 'ki', bls_code: null, bls_name: null, aehnlich: false, annahme: '1 Chili ≈ 10 g', unsicher: false, quelle: 'ki', je100: { kcal: 40, eiweiss: 2, kh: 7, fett: 0.4 }, kcal: 8, eiweiss: 0.4, kh: 1.4, fett: 0.1 }
+          ] : [])
         ]
       };
     }
@@ -52,6 +56,9 @@ async function neueSeite(browser, width, storage) {
       } else if (m === 'PATCH') {
         const id = u.match(/id=eq\.([^&]+)/)[1]; const e = page.tagebuch.find(x => x.id === id);
         Object.assign(e, JSON.parse(req.postData() || '{}')); page.tagebuchPatches = (page.tagebuchPatches || []).concat([{ id, ...JSON.parse(req.postData() || '{}') }]); body = [];
+      } else if (m === 'DELETE') {
+        const id = u.match(/id=eq\.([^&]+)/)[1]; page.tagebuch = page.tagebuch.filter(x => x.id !== id);
+        page.tagebuchDeletes = (page.tagebuchDeletes || []).concat([id]); body = [];
       }
     }
     else if (u.includes('zutat_wissen')) { page.wissen = (page.wissen || []).concat([JSON.parse(req.postData() || '{}')]); body = []; }
@@ -80,9 +87,14 @@ const beispielTagebuch = () => [
 ];
 const kein_seitlich = async (page, w) => (await page.evaluate(() => document.documentElement.scrollWidth)) <= w;
 const sichtbar = (page, sel) => page.isVisible(sel);
+// Knöpfe und Felder, die über den rechten Kartenrand ragen (scrollWidth merkt das nicht)
+const ueberKartenrand = (page, sel) => page.evaluate(sel => {
+  const box = document.querySelector('.karte-schwebend').getBoundingClientRect();
+  return [...document.querySelectorAll(sel)].filter(b => b.offsetParent && b.getBoundingClientRect().right > box.right - 4).map(b => b.className || b.textContent.trim());
+}, sel);
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+  const browser = await chromium.launch();
 
   // ---- 1. Erster Start (leerer Speicher), 320 px ----
   let p = await neueSeite(browser, 320);
@@ -128,8 +140,14 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check((await p.textContent('#portionen-anzeige-r1')) === '5', 'Portionen − : 6 -> 5');
   check((await p.textContent('#zutaten-liste-r1 .menge-knopf >> nth=0')).trim() === '833 g', 'Gulasch auf 5 Portionen: 833 g');
   await p.click('#zutaten-liste-r1 .menge-knopf >> nth=0'); await p.waitForTimeout(100);
-  check(await p.locator('#zutaten-liste-r1 input').count() === 1 && await p.evaluate(() => document.activeElement.matches('#zutaten-liste-r1 input')), 'Tipp auf die Menge macht daraus ein Eingabefeld mit Fokus');
-  await p.fill('#zutaten-liste-r1 input', '400'); await p.dispatchEvent('#zutaten-liste-r1 input', 'change'); await p.waitForTimeout(150);
+  check(await p.locator('#zutaten-liste-r1 .me-menge').count() === 1 && await p.locator('#zutaten-liste-r1 .me-einheit').count() === 1 && await p.evaluate(() => document.activeElement.matches('#zutaten-liste-r1 .me-menge')), 'Tipp auf die Menge: Felder für Menge und Einheit, Fokus auf der Menge');
+  check(await p.inputValue('#zutaten-liste-r1 .me-einheit') === 'g' && await p.locator('#zutaten-liste-r1 .einheit-chips button').count() >= 6, 'Einheit steht im Feld, darunter Einheiten zum Antippen');
+  check(await kein_seitlich(p, 320), 'Menge/Einheit bearbeiten: nichts ragt seitlich heraus');
+  const rand1 = await ueberKartenrand(p, '#zutaten-liste-r1 input, #zutaten-liste-r1 button');
+  check(rand1.length === 0, 'Menge, Einheit und ✓ bleiben in der Karte ' + JSON.stringify(rand1));
+  await p.screenshot({ path: OUT + '/n3c_einheit.png' });
+  await p.fill('#zutaten-liste-r1 .me-menge', '400'); await p.press('#zutaten-liste-r1 .me-menge', 'Enter'); await p.waitForTimeout(150);
+  check(!p.calls.some(c => c.startsWith('PATCH /rest/v1/recipes')), 'Nur die Menge geändert: nichts gespeichert (nur umgerechnet)');
   check((await p.textContent('#zutaten-liste-r1 .menge-knopf >> nth=1')).trim() === '1,2', 'Nur 400 g Fleisch: Zwiebeln 1,2');
   check((await p.textContent('#portionen-anzeige-r1')) === '2,4', 'Portionen folgen: 2,4');
   await p.click('#zutaten-liste-r1 .menge-knopf >> nth=1'); await p.waitForTimeout(100);
@@ -422,7 +440,7 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   });
   await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
   await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
-  await p.click('#zutaten-liste-r1 .menge-knopf >> nth=0'); await p.fill('#zutaten-liste-r1 input', '400'); await p.dispatchEvent('#zutaten-liste-r1 input', 'change'); await p.waitForTimeout(150);
+  await p.click('#zutaten-liste-r1 .menge-knopf >> nth=0'); await p.fill('#zutaten-liste-r1 .me-menge', '400'); await p.press('#zutaten-liste-r1 .me-menge', 'Enter'); await p.waitForTimeout(150);
   await p.click('#recipe-detail-r1 .ikon-knopf[data-panel="einkauf"]'); await p.waitForTimeout(200);
   const zeilen = await p.locator('#einkauf-r1 .einkauf-zeile span').allTextContents();
   check(JSON.stringify(zeilen) === JSON.stringify(['400 g Rindergulasch', '2 Zwiebeln', 'Paprikapulver "edelsüß"', 'Salz']), 'Einkaufsliste mit umgerechneten Mengen: ' + JSON.stringify(zeilen));
@@ -518,6 +536,114 @@ const sichtbar = (page, sel) => page.isVisible(sel);
   check(await p.locator('.rezept-karte').count() === 3, 'Ohne Spalte naehrwerte: Rezeptliste lädt trotzdem');
   check(p.calls.some(c => c.startsWith('GET /rest/v1/recipes?select=') && !c.includes('naehrwerte')), 'Zweiter Versuch ohne die Spalte wurde wirklich gemacht');
   check(p.fehler.length === 0, 'Ohne Spalte naehrwerte: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 15. Nährwerte v3: ähnlich, KI-Schätzung, alte Ergebnisse neu rechnen ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  p.nwMitKi = true;
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.evaluate(() => { const r = allRecipesCache.find(x => x.id === 'r1'); r.naehrwerte = { version: 1, stand: naehrwertStand(r), summe: { kcal: 999, eiweiss: 1, kh: 1, fett: 1 }, zutaten: [] }; });
+  check(await p.evaluate(() => !naehrwerteAktuell(allRecipesCache.find(x => x.id === 'r1'))), 'Altes Ergebnis (Version 1) gilt als veraltet');
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r1 .reiter >> text=Nährwerte'); await p.waitForTimeout(400);
+  check((p.nwAnfragen || []).length === 1, 'Veraltetes Ergebnis wird beim Öffnen neu gerechnet');
+  check((await p.textContent('#naehrwerte-r1 .nw-unter')).includes('1 Zutat KI-geschätzt'), 'Hinweis "1 Zutat KI-geschätzt"');
+  await p.click('#naehrwerte-r1 summary'); await p.waitForTimeout(150);
+  const nwText = await p.textContent('#naehrwerte-r1 .nw-details');
+  check(nwText.includes('ähnlich: Schwein Bauchspeck, geräuchert'), 'Pancetta: "ähnlich: Schwein Bauchspeck"');
+  check(nwText.includes('KI-Schätzung (nicht im BLS)'), 'Chilis: "KI-Schätzung (nicht im BLS)"');
+  check((await p.textContent('#naehrwerte-r1 .nw-quelle')).includes('KI geschätzt'), 'Quellenzeile erwähnt die KI-Schätzung');
+  check(await p.locator('#naehrwerte-r1 .nw-fehlt').count() === 0, 'Kein "Nicht gefunden" mehr');
+  const mot = await p.evaluate(() => { const h = motivatorLink(allRecipesCache.find(x => x.id === 'r1')).split('s1.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(decodeURIComponent(escape(atob(h)))); });
+  check(mot.z.some(x => x[0] === 'W411300') && !mot.z.some(x => x[2] === 'Chilis') && (mot.u || []).some(x => x[0] === 'Chilis'), 'Motivator: Pancetta mit BLS-Code, Chilis als "selbst suchen" ' + JSON.stringify(mot));
+  await p.screenshot({ path: OUT + '/n9b_naehrwerte_ki.png', fullPage: true });
+  check(p.fehler.length === 0, 'Nährwerte v3: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 16. Einheit in der Rezeptansicht ändern (1 Stück Parmesan → 30 g) ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#zutaten-liste-r1 .menge-knopf >> nth=1'); await p.waitForTimeout(100);
+  check(await p.inputValue('#zutaten-liste-r1 .me-einheit') === '', 'Zwiebeln: Einheitsfeld leer (Stück)');
+  await p.click('#zutaten-liste-r1 .einheit-chips >> text=g'); await p.waitForTimeout(100);
+  check(await p.inputValue('#zutaten-liste-r1 .me-einheit') === 'g' && await p.evaluate(() => document.activeElement.matches('#zutaten-liste-r1 .me-menge')), 'Einheit antippen: steht im Feld, Fokus zurück auf der Menge');
+  check((await p.textContent('#zutat-hinweis-r1')).includes('wird im Rezept gespeichert'), 'Hinweis: neue Einheit wird gespeichert');
+  await p.fill('#zutaten-liste-r1 .me-menge', '300'); await p.press('#zutaten-liste-r1 .me-menge', 'Enter'); await p.waitForTimeout(400);
+  const einheitPatch = p.calls.filter(c => c.startsWith('PATCH /rest/v1/recipes?id=eq.r1'));
+  check(einheitPatch.length === 1, 'Neue Einheit: PATCH ans Rezept');
+  const r1neu = await p.evaluate(() => allRecipesCache.find(x => x.id === 'r1'));
+  check(JSON.stringify(r1neu.zutaten_strukturiert[1]) === JSON.stringify({ menge: 300, einheit: 'g', name: 'Zwiebeln' }) && r1neu.zutaten.includes('300 g Zwiebeln'), 'Gespeichert: 300 g Zwiebeln ' + JSON.stringify(r1neu.zutaten_strukturiert[1]));
+  check((await p.textContent('#zutaten-liste-r1 .menge-knopf >> nth=1')).trim() === '300 g' && (await p.textContent('#zutat-hinweis-r1')).includes('Gespeichert: Zwiebeln jetzt in g'), 'Anzeige "300 g" und Bestätigung');
+  check((p.nwAnfragen || []).some(a => a.zutaten[1].einheit === 'g' && a.zutaten[1].menge === 300), 'Nährwerte werden mit der neuen Einheit neu gerechnet');
+  // Bei anderen Portionen: gespeichert wird für die Grundportionen
+  await p.click('#recipe-detail-r1 .mini-rund >> nth=0'); await p.click('#recipe-detail-r1 .mini-rund >> nth=0'); await p.click('#recipe-detail-r1 .mini-rund >> nth=0'); await p.waitForTimeout(100);
+  await p.click('#zutaten-liste-r1 .menge-knopf >> nth=0'); await p.fill('#zutaten-liste-r1 .me-einheit', 'kg'); await p.fill('#zutaten-liste-r1 .me-menge', '0.5');
+  await p.click('#zutaten-liste-r1 .me-ok'); await p.waitForTimeout(400);
+  const gulasch = await p.evaluate(() => allRecipesCache.find(x => x.id === 'r1').zutaten_strukturiert[0]);
+  check(gulasch.menge === 1 && gulasch.einheit === 'kg', 'Bei 3 von 6 Portionen 0,5 kg eingegeben → gespeichert 1 kg ' + JSON.stringify(gulasch));
+  // Escape bricht ab
+  const patchesVorher = p.calls.filter(c => c.startsWith('PATCH')).length;
+  await p.click('#zutaten-liste-r1 .menge-knopf >> nth=1'); await p.fill('#zutaten-liste-r1 .me-einheit', 'EL'); await p.press('#zutaten-liste-r1 .me-einheit', 'Escape'); await p.waitForTimeout(200);
+  check(p.calls.filter(c => c.startsWith('PATCH')).length === patchesVorher && await p.locator('#zutaten-liste-r1 .me-menge').count() === 0, 'Escape bricht ab, nichts gespeichert');
+  // Formular: Einheitsfeld mit Vorschlagsliste
+  check(await p.evaluate(() => document.querySelectorAll('#einheiten-liste option').length) >= 12, 'Vorschlagsliste für Einheiten vorhanden');
+  await p.click('#recipe-detail-r1 .ikon-knopf[data-panel="bearbeiten"]'); await p.click('#bearbeiten-wahl-r1 >> text=Original ändern'); await p.waitForTimeout(300);
+  check(await p.getAttribute('#zutaten-rows .zutat-einheit >> nth=0', 'list') === 'einheiten-liste', 'Formular: Einheitsfeld nutzt die Vorschlagsliste');
+  check(p.fehler.length === 0, 'Einheit ändern: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 17. Kochverlauf bearbeiten und löschen ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  p.tagebuch = beispielTagebuch();
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r1 .meta-knopf'); await p.waitForTimeout(200);
+  check(await sichtbar(p, '#verlauf-r1') && await p.locator('#verlauf-r1 .verlauf-eintrag').count() === 3, '"3× gekocht" antippen: Verlauf mit drei Einträgen');
+  check((await p.textContent('#verlauf-r1 .verlauf-eintrag >> nth=0')).includes('Etwas zu flüssig') && (await p.textContent('#verlauf-r1 .verlauf-eintrag >> nth=0')).includes('👍'), 'Neuester Eintrag mit 👍 und Notiz');
+  await p.screenshot({ path: OUT + '/n10_verlauf.png' });
+  await p.click('#verlauf-r1 .verlauf-aendern >> nth=0'); await p.waitForTimeout(150);
+  check(await p.locator('#verlauf-r1 .vb-datum').count() === 1 && (await p.textContent('#verlauf-r1 .vb-pille.an')).includes('Gern'), '✎: Datum, Bewertung (Gern gewählt) und Notiz bearbeitbar');
+  check(await kein_seitlich(p, 320), 'Verlauf bearbeiten: nichts ragt seitlich heraus');
+  const rand2 = await ueberKartenrand(p, '#verlauf-r1 button, #verlauf-r1 input, #verlauf-r1 textarea');
+  check(rand2.length === 0, 'Verlauf: alle Knöpfe und Felder in der Karte ' + JSON.stringify(rand2));
+  await p.locator('#verlauf-r1').scrollIntoViewIfNeeded(); await p.screenshot({ path: OUT + '/n10b_verlauf_bearbeiten.png' });
+  await p.click('#verlauf-r1 .vb-pille >> text=Geht so');
+  await p.fill('#verlauf-r1 .vb-notiz', 'Nur 2 Karotten statt 3');
+  const neuesDatum = await p.evaluate(() => lokalesDatum(new Date(Date.now() - 34 * 864e5)));
+  await p.fill('#verlauf-r1 .vb-datum', neuesDatum);
+  await p.click('#verlauf-r1 .vb-speichern'); await p.waitForTimeout(300);
+  const vp = (p.tagebuchPatches || [])[0] || {};
+  check(vp.id === 'a1' && vp.bewertung === 'geht_so' && vp.notiz === 'Nur 2 Karotten statt 3' && !!vp.gekocht_am, 'Speichern: PATCH mit Bewertung, Notiz und Datum ' + JSON.stringify(vp));
+  check((await p.textContent('#verlauf-r1 .verlauf-eintrag >> nth=0')).includes('😐') && await p.locator('#verlauf-r1 .vb-notiz').count() === 0, 'Verlauf zeigt die Änderung (😐), Formular zu');
+  check((await p.textContent('#recipe-detail-r1 .karte-zettel')).includes('Nur 2 Karotten'), 'Zettel "Letztes Mal notiert" zeigt die neue Notiz');
+  // Löschen in zwei Schritten
+  await p.click('#verlauf-r1 .verlauf-aendern >> nth=1'); await p.waitForTimeout(100);
+  await p.click('#verlauf-r1 .vb-loeschen'); await p.waitForTimeout(100);
+  check(!(p.tagebuchDeletes || []).length && (await p.textContent('#verlauf-r1 .vb-loeschen')) === 'Wirklich löschen?', 'Erstes Tippen auf Löschen fragt nach');
+  await p.click('#verlauf-r1 .vb-loeschen'); await p.waitForTimeout(300);
+  check(JSON.stringify(p.tagebuchDeletes) === '["a2"]' && await p.locator('#verlauf-r1 .verlauf-eintrag').count() === 2, 'Zweites Tippen löscht den Eintrag');
+  check((await p.textContent('#recipe-detail-r1 .karte-meta')).includes('2× gekocht'), 'Kopfzeile: jetzt 2× gekocht');
+  await p.click('#rezept-ueberlagerung .karte-zu'); await p.waitForTimeout(300);
+  check((await p.textContent('.rezept-karte >> nth=0 >> .rezept-meta')).startsWith('2× gekocht'), 'Kochbuch-Liste: 2× gekocht');
+  check(p.fehler.length === 0, 'Verlauf: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
+  await p.close();
+
+  // ---- 18. Am selben Tag zweimal fertig: zusammenlegen statt doppelt ----
+  p = await neueSeite(browser, 320, { skillet_active_section: 'recipes' });
+  p.tagebuch = [{ id: 'h1', recipe_id: 'r1', titel: 'Gulasch nach Omas Art', frei: false, gekocht_am: new Date().toISOString(), bewertung: null, notiz: 'Zu viel Karotten' }];
+  await p.goto('file://' + DIR + '/index.html'); await p.waitForTimeout(500);
+  await p.click('.rezept-karte >> nth=0'); await p.waitForTimeout(300);
+  await p.click('#recipe-detail-r1 >> text=Kochen'); await p.waitForTimeout(400);
+  await p.click('.koch-anders-box summary'); await p.fill('#koch-anders', 'Weniger Salz');
+  await p.click('#kochmodus-overlay button[aria-label="Nächster Schritt"]'); await p.click('#kochmodus-overlay button[aria-label="Nächster Schritt"]'); await p.waitForTimeout(100);
+  await p.click('#kochmodus-overlay .koch-haupt'); await p.waitForTimeout(300);
+  await p.click('.fertig-pille >> text=Gern'); await p.waitForTimeout(100);
+  await p.click('#fertig-speichern'); await p.waitForTimeout(500);
+  const merge = (p.tagebuchPatches || [])[0] || {};
+  check(!(p.tagebuchPosts || []).length && merge.id === 'h1' && merge.bewertung === 'gern' && merge.notiz === 'Zu viel Karotten\nWeniger Salz', 'Heute schon eingetragen: zusammengelegt statt neu ' + JSON.stringify(merge));
+  check(await p.evaluate(() => kochStatistik('r1').anzahl) === 1, 'Zählt weiter als 1× gekocht');
+  check(p.fehler.length === 0, 'Zusammenlegen: keine JavaScript-Fehler (' + p.fehler.join(' | ') + ')');
   await p.close();
 
   // ---- 11. Desktop: Kochen verborgen, Rezepte breit ----

@@ -1,4 +1,4 @@
-import { normEinheit, normName, rechneZutat, summiere, schluessel } from '../../supabase/functions/naehrwerte/logik.ts';
+import { normEinheit, normName, rechneZutat, summiere, schluessel, gueltigeWerte } from '../../supabase/functions/naehrwerte/logik.ts';
 let ok = 0, fail = 0; const check = (c: boolean, m: string) => { c ? ok++ : fail++; console.log((c ? 'OK   ' : 'FAIL ') + m); };
 check(normEinheit('Stück') === '' && normEinheit('EL.') === 'el' && normEinheit('Gramm') === 'g' && normEinheit(null) === '' && normEinheit('Dosen') === 'dose', 'Einheiten normalisiert');
 check(normName('  Gehackte   Tomaten ') === 'gehackte tomaten', 'Namen normalisiert');
@@ -24,4 +24,16 @@ check(weg.status === 'nicht_gefunden', 'Ohne BLS-Eintrag: nicht gefunden');
 check((rechneZutat({ menge: 1, einheit: null, name: 'x' }, undefined, undefined) as any).status === 'unbekannt', 'Ohne Wissen: unbekannt');
 const s = summiere([r, g, salz, weg]);
 check(s.kcal === 238 && s.eiweiss === 8.4, 'Summe nur über gefundene Zutaten: ' + JSON.stringify(s));
+// KI-Schätzung, wenn nichts im BLS passt
+const chili = rechneZutat({ menge: 3, einheit: null, name: 'Chilis' }, w(10, null, { ki_je100: { kcal: 40, eiweiss: 2, kh: 7, fett: 0.4 } }), undefined) as any;
+check(chili.status === 'ok' && chili.werte_quelle === 'ki' && chili.gramm === 30 && chili.kcal === 12 && chili.bls_code === null, 'Ohne BLS, mit KI-Werten: 3 Chilis à 10 g = 12 kcal (KI)');
+const kaputt = rechneZutat({ menge: 1, einheit: null, name: 'X' }, w(50, null, { ki_je100: { kcal: 5000, eiweiss: 1, kh: 1, fett: 1 } }), undefined) as any;
+check(kaputt.status === 'nicht_gefunden', 'Unplausible KI-Werte (5000 kcal/100 g) werden verworfen');
+check(gueltigeWerte({ kcal: '40', eiweiss: 2, kh: 7, fett: 0 })?.kcal === 40 && gueltigeWerte({ kcal: 40 }) === null, 'KI-Werte: Zahlen als Text ok, unvollständige nicht');
+const speck = { code: 'W411300', name: 'Schwein Bauchspeck, Rohpökelware, geräuchert', kcal: 621, eiweiss: 9.1, kh: 0, fett: 65 };
+const pan = rechneZutat({ menge: 200, einheit: 'g', name: 'Pancetta' }, w(1, 'W411300', { aehnlich: true }), speck) as any;
+check(pan.status === 'ok' && pan.werte_quelle === 'bls' && pan.aehnlich === true && pan.kcal === 1242, 'Ähnlicher BLS-Eintrag: Pancetta → Bauchspeck, als „ähnlich“ markiert');
+check(r.aehnlich === false && r.werte_quelle === 'bls', 'Normaler BLS-Treffer: nicht „ähnlich“, Quelle BLS');
+const s2 = summiere([r, chili]);
+check(s2.kcal === 80, 'Summe zählt KI-geschätzte Zutaten mit: 68 + 12 = 80');
 console.log(`\n${ok} bestanden, ${fail} fehlgeschlagen`);

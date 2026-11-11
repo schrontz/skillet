@@ -24,7 +24,7 @@ async function tagebuchEintragen(eintrag) {
   });
   if (!res.ok) throw new Error('Speichern ging nicht (' + res.status + ')');
   const [zeile] = await res.json();
-  if (tagebuchCache) tagebuchCache.unshift(zeile);
+  if (tagebuchCache) { tagebuchCache.unshift(zeile); tagebuchSortieren(); }
   return zeile;
 }
 
@@ -39,6 +39,46 @@ async function tagebuchMitRezeptVerbinden(eintragId, rezept) {
     const e = tagebuchCache && tagebuchCache.find(x => x.id === eintragId);
     if (e) { e.recipe_id = rezept.id; e.titel = rezept.titel; }
   } catch (e) { /* Statistik fehlt dann für dieses eine Mal - kein Beinbruch */ }
+}
+
+// Eintrag ändern (Bewertung, Notiz, Datum) - im Cache gleich mit
+async function tagebuchAktualisieren(id, aenderung) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/kochtagebuch?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...TAGEBUCH_KOPF, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(aenderung)
+  });
+  if (!res.ok) throw new Error('Speichern ging nicht (' + res.status + ')');
+  const e = tagebuchCache && tagebuchCache.find(x => x.id === id);
+  if (e) Object.assign(e, aenderung);
+  tagebuchSortieren();
+}
+
+async function tagebuchLoeschen(id) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/kochtagebuch?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: { ...TAGEBUCH_KOPF, Prefer: 'return=minimal' }
+  });
+  if (!res.ok) throw new Error('Löschen ging nicht (' + res.status + ')');
+  if (tagebuchCache) tagebuchCache = tagebuchCache.filter(x => x.id !== id);
+}
+
+function tagebuchSortieren() {
+  if (tagebuchCache) tagebuchCache.sort((a, b) => new Date(b.gekocht_am) - new Date(a.gekocht_am));
+}
+
+// Heute schon dasselbe Rezept eingetragen? Dann wird der neue Eintrag damit zusammengelegt
+function tagebuchHeute(recipeId, jetzt = new Date()) {
+  if (!recipeId) return null;
+  return (tagebuchCache || []).find(e => e.recipe_id === recipeId && tageHer(e.gekocht_am, jetzt) === 0) || null;
+}
+
+// Zwei Notizen zusammenführen, ohne denselben Text doppelt
+function notizenZusammen(alt, neu) {
+  const a = (alt || '').trim(), n = (neu || '').trim();
+  if (!a) return n || null;
+  if (!n || a.includes(n)) return a;
+  return a + '\n' + n;
 }
 
 const TAG_MS = 24 * 60 * 60 * 1000;

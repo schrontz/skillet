@@ -27,8 +27,13 @@ function naehrwertStand(r) {
   return 'v2-' + h.toString(36) + '-' + text.length;
 }
 
+// Version 3 (11.11.): ähnliche BLS-Einträge und KI-Schätzung für Zutaten, die nicht im BLS stehen.
+// Ältere Ergebnisse werden beim nächsten Öffnen neu gerechnet, damit „nicht gefunden“ verschwindet.
+const NW_VERSION = 3;
+
 function naehrwerteAktuell(r) {
-  return !!(r && r.naehrwerte && r.naehrwerte.summe && r.naehrwerte.stand === naehrwertStand(r));
+  return !!(r && r.naehrwerte && r.naehrwerte.summe && (r.naehrwerte.version || 1) >= NW_VERSION
+    && r.naehrwerte.stand === naehrwertStand(r));
 }
 
 // ---- Übergabe an Motivator ----
@@ -42,9 +47,9 @@ function motivatorLink(r) {
     .filter(x => x.status === 'ok' && x.bls_code && x.gramm > 0)
     .map(x => [x.bls_code, Math.round(x.gramm), String(x.name || '').slice(0, 60)]);
   if (z.length === 0) return null;
-  // Nicht erkannte Zutaten nur mit Namen und Menge – Motivator bietet an, sie selbst zu suchen
+  // Nicht erkannte (und von der KI geschätzte) Zutaten nur mit Namen und Menge – Motivator bietet an, sie selbst zu suchen
   const u = (r.naehrwerte.zutaten || [])
-    .filter(x => x.status === 'nicht_gefunden' || x.status === 'unbekannt')
+    .filter(x => x.status === 'nicht_gefunden' || x.status === 'unbekannt' || (x.status === 'ok' && !x.bls_code))
     .map(x => [String(x.name || '').slice(0, 60), [x.menge, x.einheit].filter(v => v !== null && v !== undefined && v !== '').join(' ').slice(0, 20)])
     .filter(x => x[0]);
   const json = JSON.stringify({ v: 1, t: r.titel || 'Rezept', p: r.basis_portionen || 1, z, ...(u.length ? { u } : {}) });
@@ -207,6 +212,7 @@ function renderNaehrwerte(id) {
   const fehlt = zeilen.filter(z => z.status === 'nicht_gefunden' || z.status === 'unbekannt');
   const egal = zeilen.filter(z => z.status === 'vernachlaessigbar');
   const geschaetzt = ok.some(z => z.unsicher) || ok.some(z => z.annahme && z.quelle !== 'hand');
+  const kiWerte = ok.filter(z => z.werte_quelle === 'ki');
 
   el.innerHTML = `
     <div class="nw-oben">
@@ -223,6 +229,7 @@ function renderNaehrwerte(id) {
     <div class="nw-unter">
       ${r.basis_portionen ? `Pro Portion (Rezept für ${r.basis_portionen}).` : 'Für das ganze Rezept – trag beim Bearbeiten Portionen ein, dann siehst du die Werte pro Portion.'}
       ${geschaetzt ? '<span class="nw-schaetzung">Mengen teils geschätzt</span>' : ''}
+      ${kiWerte.length ? `<span class="nw-schaetzung nw-ki">${kiWerte.length === 1 ? '1 Zutat' : kiWerte.length + ' Zutaten'} KI-geschätzt</span>` : ''}
     </div>
     ${fehlt.length ? `<div class="nw-fehlt">Nicht gefunden, nicht mitgerechnet: ${fehlt.map(z => htmlSicher(z.name)).join(', ')}</div>` : ''}
     ${motivatorKnopf(r)}
@@ -233,7 +240,7 @@ function renderNaehrwerte(id) {
         <div class="nw-zeile">
           <div class="nw-name">
             ${z.unsicher ? '<span class="nw-ca" title="geschätzt">≈</span> ' : ''}${htmlSicher(z.name)}
-            <small>${htmlSicher(z.bls_name)}${z.annahme && z.quelle !== 'hand' ? ' · ' + htmlSicher(z.annahme) : ''}${z.quelle === 'hand' ? ' · von dir korrigiert' : ''}</small>
+            <small>${nwHerkunft(z)}${z.annahme && z.quelle !== 'hand' ? ' · ' + htmlSicher(z.annahme) : ''}${z.quelle === 'hand' ? ' · von dir korrigiert' : ''}</small>
           </div>
           <div class="nw-werte">
             <span id="nw-gramm-${id}-${z.i}"><button type="button" class="menge-knopf" onclick="grammAendern('${id}', ${z.i})" aria-label="Gramm für ${htmlSicher(z.name)} ändern">${z.gramm} g</button></span>
@@ -243,8 +250,15 @@ function renderNaehrwerte(id) {
       ${egal.length ? `<div class="nw-egal">Nicht mitgerechnet (kaum Kalorien): ${egal.map(z => htmlSicher(z.name)).join(', ')}</div>` : ''}
       <div class="nw-tipp">Stimmt eine Menge nicht? Tipp auf die Gramm. Skillet merkt sich das für diese Zutat.</div>
     </details>
-    <div class="nw-quelle">Nährwerte: Bundeslebensmittelschlüssel (BLS) 4.0, Max Rubner-Institut. Richtwerte, keine exakte Messung.</div>
+    <div class="nw-quelle">Nährwerte: Bundeslebensmittelschlüssel (BLS) 4.0, Max Rubner-Institut${kiWerte.length ? '; was dort fehlt, hat die KI geschätzt' : ''}. Richtwerte, keine exakte Messung.</div>
   `;
+}
+
+// Woher die Werte einer Zutat kommen: BLS-Eintrag, ähnlicher BLS-Eintrag oder KI-Schätzung
+function nwHerkunft(z) {
+  if (z.werte_quelle === 'ki') return '<span class="nw-ki-text">KI-Schätzung (nicht im BLS)</span>';
+  if (z.aehnlich) return 'ähnlich: ' + htmlSicher(z.bls_name);
+  return htmlSicher(z.bls_name);
 }
 
 // Gramm einer Zutat von Hand korrigieren: Rezept neu summieren, Wissen für die Zukunft merken

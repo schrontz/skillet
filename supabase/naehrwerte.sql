@@ -64,3 +64,7 @@ drop policy if exists "Allow insert for anon" on public.zutat_wissen;
 create policy "Allow insert for anon" on public.zutat_wissen for insert to anon, authenticated with check (true);
 drop policy if exists "Allow update for anon" on public.zutat_wissen;
 create policy "Allow update for anon" on public.zutat_wissen for update to anon, authenticated using (true) with check (true);
+
+-- 11.11.2026: Wenn der BLS nichts Passendes hat – ähnlichen Eintrag erlauben oder Werte von der KI schätzen lassen
+alter table public.zutat_wissen add column if not exists aehnlich boolean not null default false;  -- BLS-Eintrag ist nur ähnlich (z. B. Pancetta → Bauchspeck)
+alter table public.zutat_wissen add column if not exists ki_je100 jsonb;                            -- {kcal, eiweiss, kh, fett} je 100 g, wenn gar nichts im BLS passt

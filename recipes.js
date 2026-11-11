@@ -11,7 +11,7 @@
     row.className = 'zutat-row';
     row.innerHTML = `
       <input type="number" step="any" placeholder="Menge" value="${htmlSicher(menge)}" class="zutat-menge">
-      <input type="text" placeholder="Einheit" value="${htmlSicher(einheit)}" class="zutat-einheit">
+      <input type="text" placeholder="Einheit" value="${htmlSicher(einheit)}" class="zutat-einheit" list="einheiten-liste" autocomplete="off">
       <input type="text" placeholder="Zutat" value="${htmlSicher(name)}" class="zutat-name">
       <button type="button" class="zeile-weg" onclick="this.parentElement.remove()" aria-label="Zutat entfernen">×</button>
     `;
@@ -481,7 +481,7 @@
   function rezeptMetaHtml(r) {
     const teile = [];
     const gekocht = kochMetaText(r.id);
-    if (gekocht) teile.push(gekocht);
+    if (gekocht) teile.push(`<button type="button" class="meta-knopf" onclick="zeigeKartenPanel('${r.id}', 'verlauf')" aria-label="Kochverlauf ansehen und bearbeiten">${gekocht}</button>`);
     if (r.basis_portionen) teile.push(`${r.basis_portionen} Portionen`);
     const kcal = kcalProPortion(r);
     if (kcal !== null) teile.push(`${kcal} kcal pro Portion`);
@@ -522,7 +522,7 @@
                  <button class="mini-rund" onclick="changePortionen('${id}', 1)" aria-label="mehr Portionen">+</button>
                </div>
                <div id="zutaten-liste-${id}"></div>
-               <div class="muted" style="font-size:0.78rem; margin-top:4px;">Tipp: Tipp auf eine Menge, wenn du weniger davon hast – der Rest rechnet sich mit.</div>`
+               <div class="muted" style="font-size:0.78rem; margin-top:4px;">Tipp auf eine Menge: weniger davon → der Rest rechnet sich mit. Andere Einheit → wird gespeichert.</div>`
             : `${nurPortionenOhneStruktur ? `<div class="muted" style="margin-bottom:4px;">Für ${r.basis_portionen} Portionen</div>` : ''}
                <div style="white-space:pre-wrap; font-size:0.92rem;">${htmlSicher(r.zutaten) || '<span class="muted">(keine Zutaten gespeichert)</span>'}</div>`}
         </div>
@@ -549,6 +549,7 @@
             <button class="btn-klein" onclick="startEditAsCopy('${id}')">Als Kopie</button>
           </div>
         </div>
+        <div id="verlauf-${id}" class="karten-panel" style="display:none;"></div>
         <div id="mehr-${id}" class="karten-panel" style="display:none;">
           <button class="btn-klein" style="color:var(--accent);" onclick="deleteRecipe('${id}')">Rezept löschen</button>
         </div>
@@ -570,15 +571,16 @@
 
   // Einkaufsliste, Bearbeiten-Wahl und "Mehr" klappen unter der Knopfleiste auf - immer nur eins
   function zeigeKartenPanel(id, welches) {
-    const panels = { einkauf: `einkauf-${id}`, bearbeiten: `bearbeiten-wahl-${id}`, mehr: `mehr-${id}` };
+    const panels = { einkauf: `einkauf-${id}`, bearbeiten: `bearbeiten-wahl-${id}`, mehr: `mehr-${id}`, verlauf: `verlauf-${id}` };
     const warOffen = document.getElementById(panels[welches]).style.display === 'block';
     Object.values(panels).forEach(pid => document.getElementById(pid).style.display = 'none');
     document.querySelectorAll(`#recipe-detail-${id} .ikon-knopf`).forEach(b => b.classList.remove('an'));
     if (warOffen) return;
 
     document.getElementById(panels[welches]).style.display = 'block';
-    document.querySelector(`#recipe-detail-${id} .ikon-knopf[data-panel="${welches}"]`).classList.add('an');
+    document.querySelector(`#recipe-detail-${id} .ikon-knopf[data-panel="${welches}"]`)?.classList.add('an');
     if (welches === 'einkauf') renderEinkauf(id);
+    if (welches === 'verlauf') renderKochVerlauf(id);
     document.getElementById(panels[welches]).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -612,31 +614,225 @@
     const faktor = aktuellePortionen[id] / r.basis_portionen;
     const listEl = document.getElementById(`zutaten-liste-${id}`);
 
-    listEl.innerHTML = r.zutaten_strukturiert.map(z => {
+    listEl.innerHTML = r.zutaten_strukturiert.map((z, index) => {
       if (z.menge === null || z.menge === undefined) {
         return `<div class="zutat-zeile"><span>${htmlSicher(z.name)}</span><span class="menge">${htmlSicher(z.einheit || '')}</span></div>`;
       }
       const anzeige = mengeRunden(z.menge * faktor);
       return `<div class="zutat-zeile">
         <span>${htmlSicher(z.name)}</span>
-        <span class="menge"><button type="button" class="menge-knopf" data-id="${id}" data-basis="${z.menge}" data-wert="${anzeige}"
+        <span class="menge"><button type="button" class="menge-knopf" data-id="${id}" data-index="${index}" data-basis="${z.menge}" data-wert="${anzeige}"
           data-einheit="${htmlSicher(z.einheit || '')}" onclick="mengeBearbeiten(this)"
           aria-label="Menge ${htmlSicher(z.name)} ändern">${zahlDeutsch(anzeige)}${z.einheit ? ' ' + htmlSicher(z.einheit) : ''}</button></span>
       </div>`;
-    }).join('');
+    }).join('') + `<div id="zutat-hinweis-${id}" class="zutat-hinweis" role="status"></div>`;
   }
 
-  // Tipp auf eine Menge: wird zum Eingabefeld, die Eingabe rechnet alles andere um
+  // Tipp auf eine Menge: Menge und Einheit werden zu Eingabefeldern.
+  // Nur die Menge geändert → alles andere rechnet sich mit (nur für jetzt, wie bisher).
+  // Einheit geändert (1 Stück → 30 g) → wird im Rezept gespeichert.
   function mengeBearbeiten(knopf) {
+    const { id, index, wert, basis } = knopf.dataset;
+    const alteEinheit = knopf.dataset.einheit;
     const span = knopf.parentElement;
-    span.innerHTML = `<input type="number" step="any" inputmode="decimal" value="${knopf.dataset.wert}"
-      data-basis="${knopf.dataset.basis}" data-id="${knopf.dataset.id}" aria-label="neue Menge"> ${knopf.dataset.einheit}`;
-    const input = span.querySelector('input');
-    input.addEventListener('change', () => scaleByZutat(input));
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
-    input.addEventListener('blur', () => { if (document.body.contains(input)) renderZutatenListe(input.dataset.id); });
-    input.focus();
-    input.select();
+    span.classList.add('menge-edit');
+    span.innerHTML = `<input type="number" step="any" inputmode="decimal" class="me-menge" value="${wert}" aria-label="neue Menge">`
+      + `<input type="text" class="me-einheit" list="einheiten-liste" autocomplete="off" value="${htmlSicher(alteEinheit)}" placeholder="Einheit" aria-label="Einheit">`
+      + `<button type="button" class="me-ok" aria-label="Übernehmen">✓</button>`;
+    const menge = span.querySelector('.me-menge');
+    const einheit = span.querySelector('.me-einheit');
+    const hinweis = document.getElementById(`zutat-hinweis-${id}`);
+    let fertig = false;
+
+    const uebernehmen = () => {
+      if (fertig) return;
+      fertig = true;
+      const neueEinheit = einheit.value.trim();
+      const neueMenge = parseFloat(String(menge.value).replace(',', '.'));
+      if (neueEinheit !== alteEinheit.trim()) {
+        einheitSpeichern(id, parseInt(index, 10), isFinite(neueMenge) && neueMenge > 0 ? neueMenge : null, neueEinheit);
+      } else if (neueMenge > 0 && neueMenge !== parseFloat(wert)) {
+        scaleByZutat({ dataset: { id, basis }, value: neueMenge });
+      } else {
+        renderZutatenListe(id);
+      }
+    };
+    const zeigeHinweis = () => {
+      if (hinweis) hinweis.textContent = einheit.value.trim() !== alteEinheit.trim()
+        ? 'Neue Einheit – wird im Rezept gespeichert.' : '';
+    };
+    [menge, einheit].forEach(el => el.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); uebernehmen(); }
+      if (e.key === 'Escape') { e.stopPropagation(); fertig = true; renderZutatenListe(id); } // nur abbrechen, Karte bleibt offen
+    }));
+    einheit.addEventListener('input', zeigeHinweis);
+    span.querySelector('.me-ok').addEventListener('click', uebernehmen);
+    // Woanders hingetippt: übernehmen (zwischen Menge und Einheit wechseln zählt nicht)
+    span.addEventListener('focusout', () => setTimeout(() => {
+      if (document.body.contains(span) && !span.contains(document.activeElement)) uebernehmen();
+    }, 0));
+    // Häufige Einheiten zum Antippen unter der Zeile (die Vorschlagsliste zeigt nur, was zum Getippten passt).
+    // mousedown verhindern: so bleibt der Fokus im Feld und das Antippen zählt nicht als „woanders hin“.
+    const chips = document.createElement('div');
+    chips.className = 'einheit-chips';
+    chips.innerHTML = EINHEITEN_SCHNELL.map(e => `<button type="button" data-einheit="${e}">${e}</button>`).join('');
+    chips.addEventListener('mousedown', e => e.preventDefault());
+    chips.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      einheit.value = b.dataset.einheit;
+      zeigeHinweis();
+      menge.focus();
+      menge.select();
+    });
+    span.closest('.zutat-zeile').after(chips);
+    menge.focus();
+    menge.select();
+  }
+
+  const EINHEITEN_SCHNELL = ['g', 'ml', 'EL', 'TL', 'Stück', 'Prise', 'Bund', 'Dose'];
+
+  // Neue Einheit fürs Rezept speichern. Die angezeigte Menge gilt für die gerade gewählten Portionen,
+  // gespeichert wird sie für die Grundportionen.
+  async function einheitSpeichern(id, index, menge, einheit) {
+    const r = allRecipesCache.find(rec => rec.id === id);
+    if (!r || !r.zutaten_strukturiert[index]) return;
+    const faktor = (aktuellePortionen[id] || r.basis_portionen) / r.basis_portionen;
+    const vorher = r.zutaten_strukturiert.map(z => ({ ...z }));
+    const z = r.zutaten_strukturiert[index];
+    z.menge = menge === null ? null : Math.round(menge / faktor * 100) / 100;
+    z.einheit = einheit || null;
+    const zutatenText = r.zutaten_strukturiert.map(x => [x.menge, x.einheit, x.name].filter(Boolean).join(' ')).join('\n');
+    renderZutatenListe(id);
+    const hinweis = () => document.getElementById(`zutat-hinweis-${id}`);
+    if (hinweis()) hinweis().textContent = 'Speichere …';
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/recipes?id=eq.${id}`, {
+        method: 'PATCH',
+        headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ zutaten_strukturiert: r.zutaten_strukturiert, zutaten: zutatenText })
+      });
+      if (!res.ok) throw new Error(res.status);
+      r.zutaten = zutatenText;
+      if (hinweis()) hinweis().textContent = `✓ Gespeichert: ${z.name} jetzt ${einheit ? 'in ' + einheit : 'ohne Einheit'}.`;
+      naehrwerteImHintergrund(r); // Nährwerte passen nicht mehr - im Hintergrund neu rechnen
+    } catch (e) {
+      r.zutaten_strukturiert = vorher;
+      renderZutatenListe(id);
+      if (hinweis()) hinweis().textContent = 'Speichern hat nicht geklappt – bist du online?';
+    }
+  }
+
+  // ---- Kochverlauf in der Karte: ansehen, korrigieren, löschen ----
+  const BEWERTUNG_TEXT = { gern: '👍 Gern', geht_so: 'Geht so', nein: '👎' };
+
+  function verlaufDatum(iso) {
+    const d = new Date(iso);
+    const mitJahr = d.getFullYear() !== new Date().getFullYear();
+    return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric', ...(mitJahr ? { year: 'numeric' } : {}) });
+  }
+
+  // yyyy-mm-dd in lokaler Zeit (für <input type="date">)
+  function lokalesDatum(d) {
+    const z = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+  }
+
+  function renderKochVerlauf(id, bearbeiteId = null) {
+    const box = document.getElementById(`verlauf-${id}`);
+    if (!box) return;
+    const eintraege = (tagebuchCache || []).filter(e => e.recipe_id === id);
+    if (!eintraege.length) { box.innerHTML = '<div class="muted">Noch nicht gekocht.</div>'; return; }
+    box.innerHTML = `<div class="verlauf-titel">Gekocht</div>` + eintraege.map(e => e.id === bearbeiteId ? `
+      <div class="verlauf-eintrag bearbeiten" data-eintrag="${e.id}" data-bewertung="${e.bewertung || ''}">
+        <label class="vb-zeile">Wann <input type="date" class="vb-datum" value="${lokalesDatum(new Date(e.gekocht_am))}" max="${lokalesDatum(new Date())}"></label>
+        <div class="vb-pillen">${Object.entries(BEWERTUNG_TEXT).map(([wert, text]) =>
+          `<button type="button" class="vb-pille${e.bewertung === wert ? ' an' : ''}" data-wert="${wert}" onclick="verlaufBewerten(this)" aria-pressed="${e.bewertung === wert}">${text}</button>`).join('')}</div>
+        <textarea class="vb-notiz" placeholder="Was soll nächstes Mal anders?">${htmlSicher(e.notiz || '')}</textarea>
+        <div class="vb-knoepfe">
+          <button type="button" class="btn-klein vb-speichern" onclick="verlaufSpeichern('${id}', '${e.id}')">Speichern</button>
+          <button type="button" class="btn-klein" onclick="renderKochVerlauf('${id}')">Abbrechen</button>
+          <button type="button" class="btn-dezent vb-loeschen" onclick="verlaufLoeschen(this, '${id}', '${e.id}')">Löschen</button>
+        </div>
+        <div class="vb-status" role="status"></div>
+      </div>` : `
+      <div class="verlauf-eintrag">
+        <div class="verlauf-kopf">
+          <span class="verlauf-datum">${verlaufDatum(e.gekocht_am)} <small>${vorWann(e.gekocht_am)}</small></span>
+          <span class="verlauf-bewertung">${BEWERTUNG_ZEICHEN[e.bewertung] || ''}</span>
+          <button type="button" class="verlauf-aendern" onclick="renderKochVerlauf('${id}', '${e.id}')" aria-label="Eintrag vom ${verlaufDatum(e.gekocht_am)} bearbeiten">✎</button>
+        </div>
+        ${e.notiz && e.notiz.trim() ? `<div class="verlauf-notiz">${htmlSicher(e.notiz.trim())}</div>` : ''}
+      </div>`).join('');
+  }
+
+  function verlaufBewerten(knopf) {
+    const box = knopf.closest('.verlauf-eintrag');
+    const neu = box.dataset.bewertung === knopf.dataset.wert ? '' : knopf.dataset.wert; // nochmal tippen = keine Bewertung
+    box.dataset.bewertung = neu;
+    box.querySelectorAll('.vb-pille').forEach(b => {
+      b.classList.toggle('an', b.dataset.wert === neu);
+      b.setAttribute('aria-pressed', b.dataset.wert === neu);
+    });
+  }
+
+  async function verlaufSpeichern(id, eintragId) {
+    const box = document.querySelector(`#verlauf-${id} [data-eintrag="${eintragId}"]`);
+    const e = (tagebuchCache || []).find(x => x.id === eintragId);
+    if (!box || !e) return;
+    const aenderung = {
+      bewertung: box.dataset.bewertung || null,
+      notiz: box.querySelector('.vb-notiz').value.trim() || null
+    };
+    const datum = box.querySelector('.vb-datum').value;
+    if (datum && datum !== lokalesDatum(new Date(e.gekocht_am))) {
+      const [j, m, t] = datum.split('-').map(Number);
+      aenderung.gekocht_am = new Date(j, m - 1, t, 19, 0).toISOString(); // Uhrzeit egal - abends gekocht
+    }
+    box.querySelector('.vb-speichern').disabled = true;
+    try {
+      await tagebuchAktualisieren(eintragId, aenderung);
+      kochVerlaufGeaendert(id);
+    } catch (err) {
+      box.querySelector('.vb-speichern').disabled = false;
+      box.querySelector('.vb-status').textContent = 'Speichern hat nicht geklappt – bist du online?';
+    }
+  }
+
+  // Löschen in zwei Schritten statt Bestätigungsfenster
+  async function verlaufLoeschen(knopf, id, eintragId) {
+    if (!knopf.classList.contains('sicher')) {
+      knopf.classList.add('sicher');
+      knopf.textContent = 'Wirklich löschen?';
+      return;
+    }
+    knopf.disabled = true;
+    try {
+      await tagebuchLoeschen(eintragId);
+      kochVerlaufGeaendert(id);
+    } catch (err) {
+      knopf.disabled = false;
+      knopf.closest('.verlauf-eintrag').querySelector('.vb-status').textContent = 'Löschen hat nicht geklappt – bist du online?';
+    }
+  }
+
+  // Nach einer Änderung: Verlauf, Zeile oben in der Karte, Zettel und Kochbuch-Liste auffrischen
+  function kochVerlaufGeaendert(id) {
+    renderKochVerlauf(id);
+    const detail = document.getElementById(`recipe-detail-${id}`);
+    const r = allRecipesCache.find(x => x.id === id);
+    if (detail && r) {
+      let metaEl = detail.querySelector('.karte-meta');
+      const meta = rezeptMetaHtml(r);
+      if (!metaEl && meta) { metaEl = document.createElement('div'); metaEl.className = 'karte-meta'; detail.prepend(metaEl); }
+      if (metaEl) metaEl.innerHTML = meta;
+      const zettelAlt = detail.querySelector('.karte-zettel');
+      const zettelNeu = zettelHtml(id, 'karte-zettel');
+      if (zettelAlt) zettelAlt.outerHTML = zettelNeu;
+      else if (zettelNeu) detail.querySelector('.reiter-inhalt[data-reiter="zutaten"]').insertAdjacentHTML('afterbegin', zettelNeu);
+    }
+    if (!kochStatistik(id).anzahl) zeigeKartenPanel(id, 'verlauf'); // letzter Eintrag weg: Panel zu
+    renderRezeptListe();
   }
 
   // ---- Skalierung über eine einzelne Zutat statt über Portionen (z. B. "hab nur 400g statt 500g") ----

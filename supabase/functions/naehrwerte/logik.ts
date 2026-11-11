@@ -11,7 +11,11 @@ export type Wissen = {
   unsicher: boolean;
   quelle: 'ki' | 'hand';
   vernachlaessigbar?: boolean;
+  aehnlich?: boolean;                 // BLS-Eintrag passt nur ungefähr (Pancetta → Bauchspeck)
+  ki_je100?: Je100 | null;            // nichts im BLS: Werte je 100 g von der KI geschätzt
 };
+
+export type Je100 = { kcal: number; eiweiss: number; kh: number; fett: number };
 
 export type Bls = { code: string; name: string; kcal: number; eiweiss: number; kh: number; fett: number };
 
@@ -55,23 +59,36 @@ export function rechneZutat(z: Zutat, w: Wissen | undefined, b: Bls | undefined)
   };
   if (!w) return { ...basis, status: 'unbekannt' as const };
   if (w.vernachlaessigbar || w.gramm_pro_einheit === 0) return { ...basis, unsicher: false, status: 'vernachlaessigbar' as const };
-  if (!w.bls_code || !b) return { ...basis, status: 'nicht_gefunden' as const };
+  const ki = gueltigeWerte(w.ki_je100);
+  if ((!w.bls_code || !b) && !ki) return { ...basis, status: 'nicht_gefunden' as const };
 
   const gpe = FESTE_GRAMM[normEinheit(z.einheit)] ?? w.gramm_pro_einheit ?? 0;
   const gramm = (z.menge ?? 1) * gpe;
   const f = gramm / 100;
+  const je100 = (w.bls_code && b) ? { kcal: +b.kcal, eiweiss: +b.eiweiss, kh: +b.kh, fett: +b.fett } : ki!;
   return {
     ...basis,
     status: 'ok' as const,
     gramm: Math.round(gramm),
-    bls_code: b.code,
-    bls_name: b.name,
-    je100: { kcal: +b.kcal, eiweiss: +b.eiweiss, kh: +b.kh, fett: +b.fett },
-    kcal: Math.round(b.kcal * f),
-    eiweiss: r1(b.eiweiss * f),
-    kh: r1(b.kh * f),
-    fett: r1(b.fett * f),
+    werte_quelle: (w.bls_code && b) ? 'bls' as const : 'ki' as const,
+    bls_code: (w.bls_code && b) ? b.code : null,
+    bls_name: (w.bls_code && b) ? b.name : null,
+    aehnlich: !!(w.bls_code && b && w.aehnlich),
+    je100,
+    kcal: Math.round(je100.kcal * f),
+    eiweiss: r1(je100.eiweiss * f),
+    kh: r1(je100.kh * f),
+    fett: r1(je100.fett * f),
   };
+}
+
+// KI-Werte nur nehmen, wenn sie vollständig und plausibel sind (max. 900 kcal je 100 g = reines Fett)
+export function gueltigeWerte(w: any): Je100 | null {
+  if (!w) return null;
+  const v = { kcal: Number(w.kcal), eiweiss: Number(w.eiweiss), kh: Number(w.kh), fett: Number(w.fett) };
+  if (Object.values(v).some(x => !isFinite(x) || x < 0)) return null;
+  if (v.kcal > 900 || v.eiweiss > 100 || v.kh > 100 || v.fett > 100) return null;
+  return v;
 }
 
 export function summiere(zeilen: any[]) {

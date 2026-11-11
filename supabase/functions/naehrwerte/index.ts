@@ -1,10 +1,13 @@
 // Skillet: Nährwerte eines Rezepts aus dem Bundeslebensmittelschlüssel (BLS 4.0) berechnen.
 //
-// Die Zahlen kommen aus der BLS-Tabelle, nicht von der KI. Gemini hilft nur bei zwei Dingen:
+// Die Zahlen kommen aus der BLS-Tabelle. Gemini hilft bei:
 //   1. Suchbegriffe im BLS-Stil finden und schätzen, wie viel Gramm eine Einheit wiegt
-//   2. aus den gefundenen Kandidaten den passenden Eintrag wählen
-// Beides wird in zutat_wissen gespeichert - bekannte Zutaten brauchen danach keine KI mehr.
-import { type Bls, type Wissen, type Zutat, FESTE_GRAMM, normEinheit, normName, rechneZutat, schluessel, summiere } from './logik.ts';
+//   2. aus den gefundenen Kandidaten den passenden Eintrag wählen - notfalls einen ähnlichen
+//      (Pancetta → Bauchspeck), dann als „ähnlich“ markiert
+//   3. nur wenn auch nichts Ähnliches im BLS steht (Chili, Chorizo): Werte je 100 g schätzen,
+//      in der App als „KI-Schätzung“ gekennzeichnet
+// Alles wird in zutat_wissen gespeichert - bekannte Zutaten brauchen danach keine KI mehr.
+import { type Bls, type Wissen, type Zutat, FESTE_GRAMM, gueltigeWerte, normEinheit, normName, rechneZutat, schluessel, summiere } from './logik.ts';
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -26,7 +29,8 @@ Für JEDE Zutat:
   "Hähnchen Brust, ohne Haut, roh", "Speisezwiebel roh", "Hühnerei roh", "Teigwaren eifrei, roh",
   "Reis poliert, roh", "Tomate geschält, Konserve", "Kidneybohne reif, Konserve, abgetropft",
   "Schlagsahne mind. 30 % Fett", "Weizen Mehl, Type 405", "Schwein Bauchspeck, Rohpökelware, geräuchert",
-  "Rind Gulasch (Bug) roh", "Kartoffel geschält, roh", "Vollmilch frisch, 3,5 % Fett", "Butter".
+  "Rind Gulasch (Bug) roh", "Kartoffel geschält, roh", "Vollmilch frisch, 3,5 % Fett", "Butter",
+  "Zucker weiß (Raffinadezucker/Weißzucker)", "Parmesan mind. 30 % Fett i. Tr.", "Salami".
   Nimm den Zustand, in dem die Zutat ins Gericht geht: meist roh; Dosenware als Konserve;
   Nudeln und Reis trocken (roh). Bei vernachlaessigbar: leere Liste.
 - gramm_pro_einheit: Gewicht in Gramm für EINE angegebene Einheit. Einheit leer = ein Stück.
@@ -48,10 +52,18 @@ Zutat so entspricht, wie sie ins Gericht geht:
 - Grundlebensmittel statt fertiger Gerichte oder Produkte mit weiteren Zutaten
 - roh statt zubereitet, außer die Zutat sagt etwas anderes (z. B. "gekochte Kartoffeln")
 - bei Dosenware den Konserven-Eintrag
-Passt kein Kandidat wirklich, antworte mit null - lieber null als ein falsches Lebensmittel.
+Gibt es keinen genau passenden, aber einen ähnlichen Kandidaten mit vergleichbaren Nährwerten
+(z. B. Pancetta → "Schwein Bauchspeck, geräuchert", Chorizo → "Salami"), nimm ihn und setze aehnlich: true.
+Passt auch nichts Ähnliches (anderes Lebensmittel, ganz andere Nährwerte), antworte mit code null.
 Verwende nur Codes aus den Kandidaten.
 
-Antworte nur mit JSON: {"wahl":[{"i":0,"code":"G480100"}]}`;
+Antworte nur mit JSON: {"wahl":[{"i":0,"code":"G480100","aehnlich":false}]}`;
+
+const SCHAETZ_PROMPT = `Diese Zutaten stehen nicht im deutschen Bundeslebensmittelschlüssel. Schätze für jede die
+Nährwerte je 100 g, so wie sie ins Gericht geht (roh, sofern nicht anders angegeben), nach üblichen
+Nährwerttabellen: kcal, eiweiss, kh (verfügbare Kohlenhydrate) und fett, jeweils in Gramm bzw. kcal.
+
+Antworte nur mit JSON: {"werte":[{"i":0,"kcal":0,"eiweiss":0,"kh":0,"fett":0}]}`;
 
 // Gemini ist zeitweise überlastet (503) oder kurz am Limit (429) - dann mit wachsender Pause neu versuchen
 const VORUEBERGEHEND = [429, 500, 503];
@@ -121,7 +133,9 @@ async function lerneZutaten(neue: Zutat[]): Promise<Wissen[]> {
     const v = vorbereitet.get(i);
     if (!v || v.vernachlaessigbar) return;
     const gesehen = new Map<string, { code: string; name: string }>();
-    for (const begriff of (v.suchbegriffe || []).slice(0, 3)) {
+    // Gemini-Begriffe plus der Zutatenname selbst (findet z. B. „Zucker weiß“ auch, wenn die Begriffe danebenliegen)
+    const begriffe = [...(v.suchbegriffe || []).slice(0, 3), neue[i].name];
+    for (const begriff of begriffe) {
       if (!begriff) continue;
       const treffer = await rest('rpc/bls_kandidaten', { method: 'POST', body: JSON.stringify({ suche: begriff, anzahl: 6 }) });
       for (const t of treffer) if (!gesehen.has(t.code)) gesehen.set(t.code, { code: t.code, name: t.name });
@@ -131,13 +145,28 @@ async function lerneZutaten(neue: Zutat[]): Promise<Wissen[]> {
 
   const anfragen = [...kandidaten.entries()].filter(([, k]) => k.length > 0)
     .map(([i, k]) => ({ i, zutat: [neue[i].menge, neue[i].einheit, neue[i].name].filter(x => x !== null && x !== '').join(' '), kandidaten: k }));
-  const gewaehlt = new Map<number, string | null>();
+  const gewaehlt = new Map<number, { code: string; aehnlich: boolean }>();
   if (anfragen.length > 0) {
     const b = await gemini(WAHL_PROMPT, anfragen);
     for (const w of b.wahl || []) {
-      const erlaubt = kandidaten.get(w.i)?.some(k => k.code === w.code);
-      gewaehlt.set(w.i, erlaubt ? w.code : null);
+      if (kandidaten.get(w.i)?.some(k => k.code === w.code)) gewaehlt.set(w.i, { code: w.code, aehnlich: !!w.aehnlich });
     }
+  }
+
+  // Letzte Stufe: nichts im BLS → Werte je 100 g schätzen lassen
+  const ohne = neue.map((z, i) => ({ z, i })).filter(({ i }) => {
+    const v = vorbereitet.get(i);
+    return v && !v.vernachlaessigbar && !gewaehlt.has(i);
+  });
+  const geschaetzt = new Map<number, any>();
+  if (ohne.length > 0) {
+    try {
+      const c = await gemini(SCHAETZ_PROMPT, ohne.map(({ z, i }) => ({ i, name: z.name })));
+      for (const w of c.werte || []) {
+        const werte = gueltigeWerte(w);
+        if (werte) geschaetzt.set(w.i, werte);
+      }
+    } catch (_) { /* dann bleibt es bei „nicht gefunden“ - die Berechnung geht trotzdem durch */ }
   }
 
   return neue.map((z, i) => {
@@ -146,7 +175,9 @@ async function lerneZutaten(neue: Zutat[]): Promise<Wissen[]> {
     return {
       name_norm: normName(z.name),
       einheit_norm: normEinheit(z.einheit),
-      bls_code: v.vernachlaessigbar ? null : (gewaehlt.get(i) ?? null),
+      bls_code: v.vernachlaessigbar ? null : (gewaehlt.get(i)?.code ?? null),
+      aehnlich: !v.vernachlaessigbar && !!gewaehlt.get(i)?.aehnlich,
+      ki_je100: v.vernachlaessigbar ? null : (geschaetzt.get(i) ?? null),
       gramm_pro_einheit: v.vernachlaessigbar ? 0 : (fest ?? (Number(v.gramm_pro_einheit) || null)),
       annahme: v.vernachlaessigbar ? 'vernachlässigbar' : (fest ? null : (v.annahme || null)),
       unsicher: !!v.unsicher,
@@ -167,17 +198,23 @@ export async function berechne(zutatenRoh: Zutat[]) {
     for (const w of rows) bekannt.set(w.name_norm + '|' + w.einheit_norm, w);
   }
 
-  // 2. Neues lernen (je Schlüssel nur einmal)
+  // 2. Neues lernen (je Schlüssel nur einmal). Früher „nicht gefunden“ (ohne Code, ohne KI-Werte, nicht von Hand)
+  //    wird nochmal versucht - seit es „ähnlich“ und die KI-Schätzung gibt, klappt das meist.
+  const nochmal = (w: Wissen | undefined) =>
+    !!w && w.quelle === 'ki' && !w.bls_code && !gueltigeWerte(w.ki_je100) && Number(w.gramm_pro_einheit) > 0;
   const neueMap = new Map<string, Zutat>();
-  for (const z of zutaten) if (!bekannt.has(schluessel(z)) && !neueMap.has(schluessel(z))) neueMap.set(schluessel(z), z);
+  for (const z of zutaten) {
+    const k = schluessel(z);
+    if ((!bekannt.has(k) || nochmal(bekannt.get(k))) && !neueMap.has(k)) neueMap.set(k, z);
+  }
   let gelernt = 0;
   if (neueMap.size > 0) {
     const neu = await lerneZutaten([...neueMap.values()]);
     for (const w of neu) bekannt.set(w.name_norm + '|' + w.einheit_norm, w);
     await rest('zutat_wissen?on_conflict=name_norm,einheit_norm', {
       method: 'POST',
-      headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
-      body: JSON.stringify(neu),
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(neu.map(w => ({ ...w, aktualisiert_am: new Date().toISOString() }))),
     });
     gelernt = neu.length;
   }
@@ -204,7 +241,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Keine Zutaten übergeben' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     const { zeilen, summe, gelernt } = await berechne(zutaten.slice(0, 60));
-    const naehrwerte = { version: 1, stand: stand || null, berechnet_am: new Date().toISOString(), quelle: 'BLS 4.0', summe, zutaten: zeilen };
+    const naehrwerte = { version: 3, stand: stand || null, berechnet_am: new Date().toISOString(), quelle: 'BLS 4.0', summe, zutaten: zeilen };
     if (recipe_id) {
       await rest(`recipes?id=eq.${encodeURIComponent(recipe_id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ naehrwerte }) });
     }
